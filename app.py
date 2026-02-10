@@ -67,12 +67,11 @@ def clean_number(x):
 # ==========================================
 st.title("💰 存股儀表板")
 
-# --- 🔥 新功能：智慧公告欄 (支援歷史紀錄) ---
+# --- 🔥 新功能：智慧公告欄 (視覺優化版) ---
 df_msg = load_data(MSG_URL)
 
 if df_msg is not None and not df_msg.empty:
     try:
-        # 1. 整理欄位
         df_msg.columns = df_msg.columns.str.strip()
         
         if '日期' in df_msg.columns and '內容' in df_msg.columns:
@@ -82,38 +81,38 @@ if df_msg is not None and not df_msg.empty:
             df_sorted = df_msg.sort_values(by='日期', ascending=False)
             
             if not df_sorted.empty:
-                # === A. 顯示最新的一則 (置頂) ===
-                latest_msg = df_sorted.iloc[0]
-                
-                msg_content = latest_msg['內容']
-                msg_date = latest_msg['日期'].strftime('%Y-%m-%d')
-                msg_type = latest_msg['類型'] if '類型' in df_sorted.columns else '一般'
-                
-                # 圖示邏輯
-                if '慶祝' in str(msg_type): icon, alert_type = "🎉", "success"
-                elif '提醒' in str(msg_type): icon, alert_type = "🔔", "warning"
-                elif '緊急' in str(msg_type): icon, alert_type = "🚨", "error"
-                else: icon, alert_type = "📢", "info"
+                # 定義一個小函數來決定樣式 (避免重複寫程式碼)
+                def get_msg_style(msg_type):
+                    if '慶祝' in str(msg_type): return "🎉", st.success
+                    elif '提醒' in str(msg_type) or '重要' in str(msg_type): return "🔔", st.warning
+                    elif '緊急' in str(msg_type): return "🚨", st.error
+                    else: return "📢", st.info
 
-                with st.container():
-                    if alert_type == "success": st.success(f"**{msg_date}**：{msg_content}", icon=icon)
-                    elif alert_type == "warning": st.warning(f"**{msg_date}**：{msg_content}", icon=icon)
-                    elif alert_type == "error": st.error(f"**{msg_date}**：{msg_content}", icon=icon)
-                    else: st.info(f"**{msg_date}**：{msg_content}", icon=icon)
+                # === A. 顯示最新的一則 (置頂) ===
+                latest = df_sorted.iloc[0]
+                l_type = latest['類型'] if '類型' in df_sorted.columns else '一般'
+                l_icon, l_alert = get_msg_style(l_type)
+                l_date = latest['日期'].strftime('%Y-%m-%d')
                 
-                # === B. 顯示歷史公告 (如果有第2則以上) ===
+                with st.container():
+                    l_alert(f"**{l_date}**：{latest['內容']}", icon=l_icon)
+                
+                # === B. 顯示歷史公告 (第2~6則，共5則) ===
                 if len(df_sorted) > 1:
-                    with st.expander("📜 查看更早的公告 (點擊展開)"):
-                        # 取出第2則之後的所有資料
-                        history_df = df_sorted.iloc[1:].copy()
-                        # 格式化日期，讓表格好看一點
-                        history_df['日期'] = history_df['日期'].dt.strftime('%Y-%m-%d')
-                        # 只顯示需要的欄位
-                        cols = ['日期', '內容', '類型'] if '類型' in history_df.columns else ['日期', '內容']
-                        st.dataframe(history_df[cols], use_container_width=True, hide_index=True)
+                    with st.expander("📜 查看近期公告 (近 5 則)"):
+                        # 取出第 1 筆到第 5 筆 (Python index 1:6)
+                        history_msgs = df_sorted.iloc[1:6]
+                        
+                        for index, row in history_msgs.iterrows():
+                            h_type = row['類型'] if '類型' in df_sorted.columns else '一般'
+                            h_icon, h_alert = get_msg_style(h_type)
+                            h_date = row['日期'].strftime('%Y-%m-%d')
+                            
+                            # 顯示同樣風格的彩色框
+                            h_alert(f"**{h_date}**：{row['內容']}", icon=h_icon)
 
     except Exception as e:
-        pass # 錯誤時略過，不影響主程式
+        pass 
 
 # 讀取主要資料
 df_dash = load_data(DASHBOARD_URL)
@@ -207,7 +206,7 @@ if df_dash is not None and not df_dash.empty:
                 else:
                     st.error("無法讀取交易表。")
         else:
-            st.caption("👆點擊股票可查看明細")
+            st.caption("👆 (手機請左滑) 點擊股票可查看明細")
 
         if st.button('🔄 立即更新'):
             st.cache_data.clear()
@@ -217,4 +216,3 @@ if df_dash is not None and not df_dash.empty:
         st.error(f"程式錯誤：{e}")
 else:
     st.error("讀取失敗，請檢查 Secrets 設定。")
-
