@@ -4,7 +4,9 @@ import pandas as pd
 # ==========================================
 # 1. 設定區
 # ==========================================
-SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTH3RrFjPN4B4FU_hIScIIbAJ1F0-xERCwOwG-w6svMDU5_fwmOnm0eTXjElqm_gED2Y7_3chlOcoo9/pub?gid=1772726386&single=true&output=csv"
+
+# 使用 st.secrets 讀取雲端設定的網址
+SHEET_URL = st.secrets["public_sheet_url"]
 
 # ==========================================
 # 2. 讀取資料函數
@@ -121,4 +123,5 @@ if df is not None and not df.empty:
     except Exception as e:
         st.error(f"程式錯誤：{e}")
 else:
+
     st.error("讀取失敗")
