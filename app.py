@@ -206,7 +206,7 @@ if df_dash is not None and not df_dash.empty:
                 else:
                     st.error("無法讀取交易表。")
         else:
-            st.caption("👆 (手機請左滑) 點擊股票可查看明細")
+            st.caption("👆 點擊框框可查看明細")
 
         if st.button('🔄 立即更新'):
             st.cache_data.clear()
@@ -216,3 +216,4 @@ if df_dash is not None and not df_dash.empty:
         st.error(f"程式錯誤：{e}")
 else:
     st.error("讀取失敗，請檢查 Secrets 設定。")
+
