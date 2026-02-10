@@ -1,6 +1,43 @@
 import streamlit as st
 import pandas as pd
+# ==========================================
+# 0. 登入系統 (門神)
+# ==========================================
+# 必須放在 set_page_config 之後，但在讀取資料之前
+st.set_page_config(page_title="雞與虎的投資看板", page_icon="📈", layout="wide") 
 
+def check_password():
+    """回傳 True 代表密碼正確，False 代表尚未登入或錯誤"""
+    
+    # 1. 如果已經登入成功過，就直接放行
+    if st.session_state.get('password_correct', False):
+        return True
+
+    # 2. 顯示輸入框
+    st.header("🔒 請登入")
+    password_input = st.text_input("請輸入神秘數字", type="password")
+
+    # 3. 驗證邏輯
+    if password_input:
+        # 從 Secrets 讀取正確密碼
+        try:
+            correct_password = st.secrets["app_password"]
+        except KeyError:
+            st.error("系統錯誤：未設定密碼 (請檢查 Secrets)")
+            return False
+
+        if password_input == correct_password:
+            st.session_state['password_correct'] = True
+            st.rerun()  # 密碼對了，重新整理頁面進入
+        else:
+            st.error("密碼錯誤 ❌")
+    
+    return False
+
+# ★★★ 關鍵點：如果 check_password() 回傳 False，就直接停止執行 ★★★
+if not check_password():
+    st.stop()  # 程式執行到這裡就會卡住，下面的程式碼完全不會跑
+    
 # ==========================================
 # 1. 設定區 (讀取雲端 Secrets)
 # ==========================================
@@ -158,4 +195,5 @@ if df_dash is not None and not df_dash.empty:
         st.error(f"程式錯誤：{e}")
 else:
     st.error("讀取失敗")
+
 
