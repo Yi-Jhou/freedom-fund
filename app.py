@@ -11,11 +11,6 @@ except FileNotFoundError:
     st.error("找不到 Secrets 設定！請在 Streamlit Cloud 後台設定。")
     st.stop()
 except KeyError:
-    # 本地測試用的備援 (如果沒有 secrets)
-    st.warning("⚠️ 未偵測到 Secrets，使用測試連結")
-    DASHBOARD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTH3RrFjPN4B4FU_hIScIIbAJ1F0-xERCwOwG-w6svMDU5_fwmOnm0eTXjElqm_gED2Y7_3chlOcoo9/pub?gid=1772726386&single=true&output=csv"
-    TRANS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTH3RrFjPN4B4FU_hIScIIbAJ1F0-xERCwOwG-w6svMDU5_fwmOnm0eTXjElqm_gED2Y7_3chlOcoo9/pub?gid=1152559794&single=true&output=csv"
-
 # ==========================================
 # 2. 資料處理函數
 # ==========================================
@@ -174,3 +169,4 @@ if df_dash is not None and not df_dash.empty:
         st.error(f"程式錯誤：{e}")
 else:
     st.error("讀取失敗")
+
