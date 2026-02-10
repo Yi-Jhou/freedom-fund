@@ -24,7 +24,7 @@ def load_data(url):
 # ==========================================
 st.set_page_config(page_title="阿州 & 建蒼的投資看板", page_icon="📈", layout="wide") 
 
-st.title("💰 我們的存股儀表板")
+st.title("💰 存股儀表板")
 st.caption("目前持有標的")
 
 # 讀取資料
@@ -125,3 +125,4 @@ if df is not None and not df.empty:
 else:
 
     st.error("讀取失敗")
+
