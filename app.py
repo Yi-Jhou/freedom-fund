@@ -2,13 +2,16 @@ import streamlit as st
 import pandas as pd
 
 # ==========================================
-# 1. 設定區 (請填入兩份 CSV 的連結)
+# 1. 設定區 (改用 st.secrets 讀取雲端設定)
 # ==========================================
-# A. 總資產儀表板 (原本的)
-DASHBOARD_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTH3RrFjPN4B4FU_hIScIIbAJ1F0-xERCwOwG-w6svMDU5_fwmOnm0eTXjElqm_gED2Y7_3chlOcoo9/pub?gid=1772726386&single=true&output=csv"
-
-# B. 交易記錄表 (請把剛剛複製的新連結貼在下面引號內！)
-TRANS_URL = "你的_交易記錄表_CSV連結_貼在這裡"
+try:
+    # 讀取總資產儀表板連結
+    DASHBOARD_URL = st.secrets["public_sheet_url"]
+    # 讀取交易記錄表連結
+    TRANS_URL = st.secrets["trans_sheet_url"]
+except FileNotFoundError:
+    st.error("找不到 Secrets 設定！請在 Streamlit Cloud 後台設定，或在本地建立 .streamlit/secrets.toml")
+    st.stop()
 
 # ==========================================
 # 2. 讀取資料函數
@@ -36,6 +39,7 @@ if df_dash is not None and not df_dash.empty:
     try:
         # --- A. 處理儀表板資料 ---
         df_dash = df_dash.astype(str)
+        # 過濾「合計」列
         df_stocks = df_dash[~df_dash["股票代號"].str.contains("計|Total", na=False)].copy()
         df_stocks["股票代號"] = df_stocks["股票代號"].str.zfill(4)
 
@@ -69,58 +73,66 @@ if df_dash is not None and not df_dash.empty:
 
         st.divider()
 
-        # --- C. 互動式表格 (點擊功能) ---
-        st.subheader("📋 持股清單 (點選股票可查看明細)")
+        # --- C. 互動式表格 (點選功能) ---
+        st.subheader("📋 持股清單 (點選股票查看明細)")
 
-        display_df = df_stocks[["股票代號", "目前市值", "帳面損益", "總投入本金", "累積總股數", "平均成本", "目前股價"]].copy()
+        display_df = df_stocks[["股票代號", "總投入本金", "累積總股數", "平均成本", "目前股價", "目前市值", "帳面損益"]].copy()
 
-        # 設定選取事件 (selection_mode='single-row')
+        # 設定顏色函數
+        def color_profit(val):
+            color = '#ff2b2b' if val > 0 else '#09ab3b' if val < 0 else 'black'
+            return f'color: {color}; font-weight: bold'
+
         event = st.dataframe(
-            display_df,
-            column_config={
-                "股票代號": st.column_config.TextColumn("股票代號", help="點擊查看詳細交易"),
-                "目前市值": st.column_config.ProgressColumn("目前市值 (佔比)", format="$%d", min_value=0, max_value=int(display_df["目前市值"].max() * 1.2)),
-                "帳面損益": st.column_config.NumberColumn("帳面損益", format="%d 元"),
-                "總投入本金": st.column_config.NumberColumn("總投入本金", format="$%d"),
-                "累積總股數": st.column_config.NumberColumn("股數", format="%d 股"),
-                "平均成本": st.column_config.NumberColumn("平均成本", format="$%.2f"),
-                "目前股價": st.column_config.NumberColumn("目前股價", format="$%.2f"),
-            },
+            display_df.style
+            .format({
+                "總投入本金": "{:,.0f}",
+                "目前市值": "{:,.0f}",
+                "帳面損益": "{:,.0f}", 
+                "平均成本": "{:.2f}",
+                "目前股價": "{:.2f}",
+                "累積總股數": "{:,.0f}"
+            })
+            .map(color_profit, subset=['帳面損益'])
+            .bar(subset=['帳面損益'], align='mid', color=['#90EE90', '#FFB6C1'])
+            .background_gradient(cmap="Blues", subset=['目前市值']),
             use_container_width=True,
             hide_index=True,
-            on_select="rerun",      # 點擊後重新執行
-            selection_mode="single-row" # 一次只能選一行
+            on_select="rerun",
+            selection_mode="single-row"
         )
 
         # --- D. 詳細交易紀錄區 (Drill-down) ---
         if len(event.selection.rows) > 0:
-            # 1. 抓出使用者點了哪一支股票
             selected_index = event.selection.rows[0]
+            # 從原始資料取值
             selected_stock_code = display_df.iloc[selected_index]["股票代號"]
             
             st.info(f"👇 您正在查看 **{selected_stock_code}** 的詳細交易紀錄")
 
-            # 2. 處理交易紀錄資料
             if df_trans is not None and not df_trans.empty:
                 df_trans = df_trans.astype(str)
-                df_trans["股票代號"] = df_trans["股票代號"].str.zfill(4) # 確保代號格式一致
-                
-                # 篩選出這支股票的資料
-                my_trans = df_trans[df_trans["股票代號"] == selected_stock_code].copy()
-                
-                # 清理一下無用的空白行 (如果還沒填資料的話)
-                my_trans = my_trans[my_trans["投入金額"] != "nan"]
-                
-                if not my_trans.empty:
-                    st.dataframe(
-                        my_trans[["日期", "交易類別", "成交單價", "投入金額", "成交股數", "手續費"]],
-                        use_container_width=True,
-                        hide_index=True
-                    )
+                if "股票代號" in df_trans.columns:
+                    df_trans["股票代號"] = df_trans["股票代號"].str.zfill(4)
+                    
+                    # 篩選
+                    my_trans = df_trans[df_trans["股票代號"] == selected_stock_code].copy()
+                    
+                    if "投入金額" in my_trans.columns:
+                         my_trans = my_trans[my_trans["投入金額"] != "nan"]
+                    
+                    if not my_trans.empty:
+                        st.dataframe(
+                            my_trans,
+                            use_container_width=True,
+                            hide_index=True
+                        )
+                    else:
+                        st.warning(f"這支股票 ({selected_stock_code}) 目前還沒有交易紀錄。")
                 else:
-                    st.warning("這支股票目前還沒有交易紀錄。")
+                    st.error("交易記錄表中找不到「股票代號」欄位。")
             else:
-                st.error("無法讀取交易記錄表，請檢查連結設定。")
+                st.error("無法讀取交易記錄表。")
         else:
             st.caption("👆 請點擊上方表格中的任一股票，這裡就會顯示它的詳細買賣紀錄。")
 
