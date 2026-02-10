@@ -14,7 +14,7 @@ def check_password():
         return True
 
     # 2. 顯示輸入框
-    st.header("🔒 請登入")
+    st.header("🔒 歡迎踏入雞虎大殿堂")
     password_input = st.text_input("請輸入神秘數字", type="password")
 
     # 3. 驗證邏輯
@@ -195,5 +195,6 @@ if df_dash is not None and not df_dash.empty:
         st.error(f"程式錯誤：{e}")
 else:
     st.error("讀取失敗")
+
 
 
