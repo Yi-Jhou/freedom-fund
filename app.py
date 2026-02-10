@@ -5,50 +5,43 @@ from datetime import datetime
 # ==========================================
 # 0. 登入系統 (門神)
 # ==========================================
-# 必須放在所有程式的最前面
 st.set_page_config(page_title="雞與虎的投資看板", page_icon="📈", layout="wide") 
 
 def check_password():
     """回傳 True 代表密碼正確，False 代表尚未登入或錯誤"""
-    
-    # 1. 如果已經登入成功過，就直接放行
     if st.session_state.get('password_correct', False):
         return True
 
-    # 2. 顯示輸入框 (使用你的專屬文字)
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
         st.header("🔒 歡迎踏入雞虎大殿堂")
         password_input = st.text_input("請輸入神秘數字", type="password")
 
-        # 3. 驗證邏輯
         if password_input:
             try:
                 correct_password = st.secrets["app_password"]
                 if password_input == correct_password:
                     st.session_state['password_correct'] = True
-                    st.rerun()  # 密碼對了，重新整理頁面進入
+                    st.rerun()
                 else:
                     st.error("密碼錯誤 ❌")
             except KeyError:
                 st.error("系統錯誤：未設定密碼 (請檢查 Secrets)")
                 return False
-    
     return False
 
-# ★★★ 關鍵點：如果 check_password() 回傳 False，就直接停止執行 ★★★
 if not check_password():
-    st.stop()  # 程式執行到這裡就會卡住，下面的程式碼完全不會跑
+    st.stop()
 
 # ==========================================
-# 1. 設定區 (讀取 3 個連結)
+# 1. 設定區
 # ==========================================
 try:
     DASHBOARD_URL = st.secrets["public_sheet_url"]
     TRANS_URL = st.secrets["trans_sheet_url"]
-    MSG_URL = st.secrets["msg_sheet_url"] # 保留公告欄連結
+    MSG_URL = st.secrets["msg_sheet_url"] 
 except (FileNotFoundError, KeyError):
-    st.error("🔒 錯誤：找不到 Secrets 設定！請在 Streamlit Cloud 後台設定。")
+    st.error("🔒 錯誤：找不到 Secrets 設定！")
     st.stop()
 
 # ==========================================
@@ -63,16 +56,10 @@ def load_data(url):
         return None
 
 def clean_stock_code(series):
-    return (
-        series.astype(str)
-        .str.replace(r'\.0$', '', regex=True)
-        .str.strip()
-        .str.zfill(4)
-    )
+    return (series.astype(str).str.replace(r'\.0$', '', regex=True).str.strip().str.zfill(4))
 
 def clean_number(x):
-    if pd.isna(x) or str(x).strip() in ["#N/A", "-", "nan", ""]:
-        return 0
+    if pd.isna(x) or str(x).strip() in ["#N/A", "-", "nan", ""]: return 0
     return pd.to_numeric(str(x).replace(',', '').replace('$', ''), errors='coerce')
 
 # ==========================================
@@ -80,38 +67,53 @@ def clean_number(x):
 # ==========================================
 st.title("💰 存股儀表板")
 
-# --- 🔥 新功能：智慧公告欄 (保留功能) ---
+# --- 🔥 新功能：智慧公告欄 (支援歷史紀錄) ---
 df_msg = load_data(MSG_URL)
 
 if df_msg is not None and not df_msg.empty:
     try:
+        # 1. 整理欄位
         df_msg.columns = df_msg.columns.str.strip()
+        
         if '日期' in df_msg.columns and '內容' in df_msg.columns:
+            # 轉換日期並排序 (最新的在最上面)
             df_msg['日期'] = pd.to_datetime(df_msg['日期'], errors='coerce')
             df_msg = df_msg.dropna(subset=['日期'])
+            df_sorted = df_msg.sort_values(by='日期', ascending=False)
             
-            if not df_msg.empty:
-                latest_msg = df_msg.sort_values(by='日期', ascending=False).iloc[0]
+            if not df_sorted.empty:
+                # === A. 顯示最新的一則 (置頂) ===
+                latest_msg = df_sorted.iloc[0]
+                
                 msg_content = latest_msg['內容']
                 msg_date = latest_msg['日期'].strftime('%Y-%m-%d')
-                msg_type = latest_msg['類型'] if '類型' in df_msg.columns else '一般'
+                msg_type = latest_msg['類型'] if '類型' in df_sorted.columns else '一般'
                 
-                if '慶祝' in str(msg_type):
-                    icon, alert_type = "🎉", "success"
-                elif '提醒' in str(msg_type) or '重要' in str(msg_type):
-                    icon, alert_type = "🔔", "warning"
-                elif '緊急' in str(msg_type):
-                    icon, alert_type = "🚨", "error"
-                else:
-                    icon, alert_type = "📢", "info"
+                # 圖示邏輯
+                if '慶祝' in str(msg_type): icon, alert_type = "🎉", "success"
+                elif '提醒' in str(msg_type): icon, alert_type = "🔔", "warning"
+                elif '緊急' in str(msg_type): icon, alert_type = "🚨", "error"
+                else: icon, alert_type = "📢", "info"
 
                 with st.container():
-                    if alert_type == "success": st.success(f"**{msg_date} 公告**：{msg_content}", icon=icon)
-                    elif alert_type == "warning": st.warning(f"**{msg_date} 公告**：{msg_content}", icon=icon)
-                    elif alert_type == "error": st.error(f"**{msg_date} 公告**：{msg_content}", icon=icon)
-                    else: st.info(f"**{msg_date} 公告**：{msg_content}", icon=icon)
-    except Exception:
-        pass
+                    if alert_type == "success": st.success(f"**{msg_date}**：{msg_content}", icon=icon)
+                    elif alert_type == "warning": st.warning(f"**{msg_date}**：{msg_content}", icon=icon)
+                    elif alert_type == "error": st.error(f"**{msg_date}**：{msg_content}", icon=icon)
+                    else: st.info(f"**{msg_date}**：{msg_content}", icon=icon)
+                
+                # === B. 顯示歷史公告 (如果有第2則以上) ===
+                if len(df_sorted) > 1:
+                    with st.expander("📜 查看更早的公告 (點擊展開)"):
+                        # 取出第2則之後的所有資料
+                        history_df = df_sorted.iloc[1:].copy()
+                        # 格式化日期，讓表格好看一點
+                        history_df['日期'] = history_df['日期'].dt.strftime('%Y-%m-%d')
+                        # 只顯示需要的欄位
+                        cols = ['日期', '內容', '類型'] if '類型' in history_df.columns else ['日期', '內容']
+                        st.dataframe(history_df[cols], use_container_width=True, hide_index=True)
+
+    except Exception as e:
+        pass # 錯誤時略過，不影響主程式
 
 # 讀取主要資料
 df_dash = load_data(DASHBOARD_URL)
