@@ -10,7 +10,8 @@ try:
 except FileNotFoundError:
     st.error("找不到 Secrets 設定！請在 Streamlit Cloud 後台設定。")
     st.stop()
-except KeyError:
+
+    
 # ==========================================
 # 2. 資料處理函數
 # ==========================================
@@ -42,7 +43,7 @@ def clean_number(x):
 # ==========================================
 st.set_page_config(page_title="阿州 & 建蒼的投資看板", page_icon="📈", layout="wide") 
 
-st.title("💰 我們的存股儀表板")
+st.title("💰 存股儀表板")
 
 # 讀取資料
 df_dash = load_data(DASHBOARD_URL)
@@ -169,4 +170,5 @@ if df_dash is not None and not df_dash.empty:
         st.error(f"程式錯誤：{e}")
 else:
     st.error("讀取失敗")
+
 
