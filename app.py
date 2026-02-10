@@ -9,9 +9,7 @@ try:
     TRANS_URL = st.secrets["trans_sheet_url"]
 except FileNotFoundError:
     st.error("找不到 Secrets 設定！請在 Streamlit Cloud 後台設定。")
-    st.stop()
-
-    
+    st.stop()   
 # ==========================================
 # 2. 資料處理函數
 # ==========================================
@@ -41,7 +39,7 @@ def clean_number(x):
 # ==========================================
 # 3. 網頁主程式
 # ==========================================
-st.set_page_config(page_title="阿州 & 建蒼的投資看板", page_icon="📈", layout="wide") 
+st.set_page_config(page_title="雞與虎的投資看板", page_icon="📈", layout="wide") 
 
 st.title("💰 存股儀表板")
 
@@ -85,7 +83,7 @@ if df_dash is not None and not df_dash.empty:
         st.divider()
 
         # --- C. 持股清單 (視覺化表格) ---
-        st.subheader("📋 持股清單 (點選股票查看明細)")
+        st.subheader("📋 持股清單")
 
         display_df = df_stocks[["股票代號", "總投入本金", "累積總股數", "平均成本", "目前股價", "目前市值", "帳面損益"]].copy()
 
@@ -159,7 +157,7 @@ if df_dash is not None and not df_dash.empty:
             else:
                 st.error("無法讀取交易記錄表。")
         else:
-            st.caption("👆 請點擊上方表格中的任一股票，這裡就會顯示它的詳細買賣紀錄。")
+            st.caption("👆 點擊任一股票，即可顯示詳細買賣紀錄。")
 
         # --- 更新按鈕 ---
         if st.button('🔄 立即更新'):
@@ -170,5 +168,6 @@ if df_dash is not None and not df_dash.empty:
         st.error(f"程式錯誤：{e}")
 else:
     st.error("讀取失敗")
+
 
 
