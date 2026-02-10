@@ -9,21 +9,19 @@ try:
     TRANS_URL = st.secrets["trans_sheet_url"]
 except FileNotFoundError:
     st.error("找不到 Secrets 設定！請在 Streamlit Cloud 後台設定。")
-    st.stop()   
+    st.stop()
 # ==========================================
 # 2. 資料處理函數
 # ==========================================
 @st.cache_data(ttl=60)
 def load_data(url):
     try:
-        # 強制將股票代號讀為字串，避免 0050 變 50
         df = pd.read_csv(url, dtype={'股票代號': str})
         return df
     except Exception as e:
         return None
 
 def clean_stock_code(series):
-    # 強力清理股票代號 (去除 .0, 空白, 補齊4位)
     return (
         series.astype(str)
         .str.replace(r'\.0$', '', regex=True)
@@ -53,16 +51,13 @@ if df_dash is not None and not df_dash.empty:
         df_dash = df_dash.astype(str)
         df_stocks = df_dash[~df_dash["股票代號"].str.contains("計|Total", na=False)].copy()
         
-        # 1. 清理股票代號
         df_stocks["股票代號"] = clean_stock_code(df_stocks["股票代號"])
 
-        # 2. 清理數值
         num_cols = ["總投入本金", "目前市值", "帳面損益", "累積總股數", "平均成本", "目前股價"]
         for col in num_cols:
             if col in df_stocks.columns:
                 df_stocks[col] = df_stocks[col].apply(clean_number).fillna(0)
         
-        # 3. 邏輯修正 (過濾 0 股, 補正市值)
         df_stocks = df_stocks[df_stocks["累積總股數"] > 0].copy()
         mask_missing = (df_stocks["目前市值"] == 0) & (df_stocks["總投入本金"] > 0)
         df_stocks.loc[mask_missing, "目前市值"] = df_stocks.loc[mask_missing, "總投入本金"]
@@ -85,22 +80,22 @@ if df_dash is not None and not df_dash.empty:
         # --- C. 持股清單 (視覺化表格) ---
         st.subheader("📋 持股清單")
 
-        display_df = df_stocks[["股票代號", "總投入本金", "累積總股數", "平均成本", "目前股價", "目前市值", "帳面損益"]].copy()
+        # 定義要顯示的欄位
+        # 在手機上，太寬的表格會需要左右滑動，這是無法避免的
+        # 但 Streamlit 的 use_container_width=True 會盡量塞進去
+        display_df = df_stocks[["股票代號", "目前市值", "帳面損益", "總投入本金", "目前股價", "累積總股數"]].copy()
 
-        # 【新功能】整列變色邏輯
+        # 整列變色邏輯 (定義在 loop 之外比較乾淨)
         def style_row_by_profit(row):
             profit = row['帳面損益']
-            # 定義顏色：賺錢紅，賠錢綠
             color = '#ff2b2b' if profit > 0 else '#09ab3b' if profit < 0 else 'black'
             
-            # 設定樣式列表 (對應每一個欄位)
             styles = []
             for col in row.index:
-                # 只讓「目前市值」和「帳面損益」變色
                 if col in ['目前市值', '帳面損益']:
                     styles.append(f'color: {color}; font-weight: bold')
                 else:
-                    styles.append('') # 其他欄位維持原樣
+                    styles.append('')
             return styles
 
         event = st.dataframe(
@@ -113,10 +108,7 @@ if df_dash is not None and not df_dash.empty:
                 "目前股價": "{:.2f}",
                 "累積總股數": "{:,.0f}"
             })
-            # 1. 套用整列變色 (取代原本的 map)
             .apply(style_row_by_profit, axis=1)
-            
-            # 2. 保留損益條 (淡色背景條，視覺輔助)
             .bar(subset=['帳面損益'], align='mid', color=['#90EE90', '#FFB6C1']),
             
             use_container_width=True,
@@ -125,39 +117,37 @@ if df_dash is not None and not df_dash.empty:
             selection_mode="single-row"
         )
 
-        # --- D. 詳細交易紀錄區 ---
+        # --- D. 詳細交易紀錄區 (手機版優化：自動跳轉提示) ---
         if len(event.selection.rows) > 0:
             selected_index = event.selection.rows[0]
             selected_stock_code = display_df.iloc[selected_index]["股票代號"]
             
-            st.info(f"👇 您正在查看 **{selected_stock_code}** 的詳細交易紀錄")
+            # 使用 container 框起來，視覺比較集中
+            with st.container(border=True):
+                st.info(f"👇 **{selected_stock_code}** 詳細交易紀錄")
 
-            if df_trans is not None and not df_trans.empty:
-                # 清理交易紀錄的欄位與代號
-                df_trans.columns = df_trans.columns.str.strip()
-                if "股票代號" in df_trans.columns:
-                    df_trans["股票代號"] = clean_stock_code(df_trans["股票代號"])
-                    
-                    # 篩選資料
-                    my_trans = df_trans[df_trans["股票代號"] == selected_stock_code].copy()
-                    
-                    # 排除無效行
-                    if "投入金額" in my_trans.columns:
-                         my_trans = my_trans[my_trans["投入金額"].apply(clean_number) > 0]
-                    
-                    if not my_trans.empty:
-                        # 顯示表格
-                        cols_to_show = ["日期", "交易類別", "成交單價", "投入金額", "成交股數", "手續費"]
-                        final_cols = [c for c in cols_to_show if c in my_trans.columns]
-                        st.dataframe(my_trans[final_cols], use_container_width=True, hide_index=True)
+                if df_trans is not None and not df_trans.empty:
+                    df_trans.columns = df_trans.columns.str.strip()
+                    if "股票代號" in df_trans.columns:
+                        df_trans["股票代號"] = clean_stock_code(df_trans["股票代號"])
+                        my_trans = df_trans[df_trans["股票代號"] == selected_stock_code].copy()
+                        
+                        if "投入金額" in my_trans.columns:
+                             my_trans = my_trans[my_trans["投入金額"].apply(clean_number) > 0]
+                        
+                        if not my_trans.empty:
+                            cols_to_show = ["日期", "交易類別", "成交單價", "投入金額", "成交股數"]
+                            final_cols = [c for c in cols_to_show if c in my_trans.columns]
+                            st.dataframe(my_trans[final_cols], use_container_width=True, hide_index=True)
+                        else:
+                            st.warning(f"無交易紀錄。")
                     else:
-                        st.warning(f"找不到 {selected_stock_code} 的交易紀錄 (可能是交易表記錄尚未填寫)。")
+                        st.error("交易表格式錯誤。")
                 else:
-                    st.error("交易表缺少「股票代號」欄位。")
-            else:
-                st.error("無法讀取交易記錄表。")
+                    st.error("無法讀取交易表。")
         else:
-            st.caption("👆 點擊任一股票，即可顯示詳細買賣紀錄。")
+            # 這是給手機版用戶的提示
+            st.caption("👆 (手機版請左滑表格) 點擊股票可看明細")
 
         # --- 更新按鈕 ---
         if st.button('🔄 立即更新'):
@@ -168,6 +158,3 @@ if df_dash is not None and not df_dash.empty:
         st.error(f"程式錯誤：{e}")
 else:
     st.error("讀取失敗")
-
-
-
