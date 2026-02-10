@@ -147,7 +147,7 @@ if df_dash is not None and not df_dash.empty:
                     st.error("無法讀取交易表。")
         else:
             # 這是給手機版用戶的提示
-            st.caption("👆 (手機版請左滑表格) 點擊股票可看明細")
+            st.caption("👆 點擊可看明細")
 
         # --- 更新按鈕 ---
         if st.button('🔄 立即更新'):
@@ -158,3 +158,4 @@ if df_dash is not None and not df_dash.empty:
         st.error(f"程式錯誤：{e}")
 else:
     st.error("讀取失敗")
+
