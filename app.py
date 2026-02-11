@@ -280,7 +280,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                 with col1:
                     f_date = st.date_input("轉帳日期", datetime.now()) 
                 with col2:
-                    f_name = st.selectbox("🐯🐔誰轉錢進來？", [" 建蒼", " 奕州"]) 
+                    f_name = st.selectbox("🐯🐔誰轉錢進來？", ["建蒼", "奕州"]) 
                 with col3:
                     f_amount = st.number_input("金額", min_value=0, step=1000, value=10000)
                 
@@ -351,6 +351,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                         st.cache_data.clear()
                     except Exception as e:
                         st.error(f"錯誤：{e}")
+
 
 
 
