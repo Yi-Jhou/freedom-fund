@@ -165,16 +165,22 @@ if df_dash is not None and not df_dash.empty:
                             # Emoji 邏輯
                             icon = "🔹" 
                             row_type = str(row['類型']) if '類型' in df_act.columns else ""
+                            content = str(row['內容']) # 先把內容抓出來
                             
                             if "入金" in row_type:
                                 icon = "💰"
                             elif "交易" in row_type:
                                 icon = "⚖️"
                             
-                            # 3. 日期格式加上年份 (例如 2026/02/11)
+                            # --- 視覺優化：如果是定期定額，讓它變顯眼！ ---
+                            if "(定期定額)" in content:
+                                # 把文字替換成粗體，甚至可以加個紅點強調
+                                content = content.replace("(定期定額)", "🔴 **(定期定額)**")
+                            
+                            # 3. 日期格式加上年份
                             date_str = row['日期'].strftime('%Y/%m/%d') if pd.notna(row['日期']) else ""
                             
-                            st.markdown(f"{icon} **{date_str}** | {row['內容']}")
+                            st.markdown(f"{icon} **{date_str}** | {content}")
                     else:
                         st.caption("近一個月無動態")
                         
@@ -183,7 +189,7 @@ if df_dash is not None and not df_dash.empty:
         else:
             st.caption("尚無動態資料")
             
-        st.divider() # 加個分隔線，區分動態和持股清單
+        st.divider() # 加個分隔線
 
         # ==========================================
         # D. 持股清單
@@ -413,3 +419,4 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
 
                     except Exception as e:
                         st.error(f"錯誤：{e}")
+
