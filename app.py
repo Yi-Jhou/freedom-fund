@@ -15,8 +15,8 @@ def check_password():
 
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.markdown("##  歡迎踏入\n## 雞虎大殿堂 🐔🐯") 
-        password_input = st.text_input("🔒 請輸入神秘數字", type="password")
+        st.markdown("## 🔒 歡迎踏入\n## 雞虎大殿堂 🐔🐯") 
+        password_input = st.text_input("請輸入神秘數字", type="password")
 
         if password_input:
             try:
@@ -69,18 +69,16 @@ def clean_number(x):
 # ==========================================
 st.title("💰 存股儀表板")
 
-# --- A. 智慧公告欄 (修正邏輯：抓 Excel 最下面那筆) ---
+# --- A. 智慧公告欄 (倒序顯示最新) ---
 df_msg = load_data(MSG_URL)
 
 if df_msg is not None and not df_msg.empty:
     try:
         df_msg.columns = df_msg.columns.str.strip()
-        # 轉換日期格式 (為了顯示漂亮)
         if '日期' in df_msg.columns:
             df_msg['日期'] = pd.to_datetime(df_msg['日期'], errors='coerce')
 
-        # ★★★ 關鍵修改：直接將資料表倒序 (最下面的變第一筆) ★★★
-        # 這樣就能保證抓到的是 Excel 最底下(最新)的那一則
+        # 倒序：最新的在最上面
         df_reversed = df_msg.iloc[::-1].reset_index(drop=True)
         
         if not df_reversed.empty:
@@ -90,28 +88,23 @@ if df_msg is not None and not df_msg.empty:
                 elif '緊急' in str(msg_type): return "🚨", st.error
                 else: return "📢", st.info
 
-            # 1. 顯示最新的一則 (現在是 index 0)
             latest = df_reversed.iloc[0]
             l_type = latest['類型'] if '類型' in df_reversed.columns else '一般'
             l_icon, l_alert = get_msg_style(l_type)
-            
-            # 處理日期顯示，如果是 NaT (格式錯誤) 就顯示空字串
             l_date_str = latest['日期'].strftime('%Y-%m-%d') if pd.notna(latest['日期']) else ""
             
             with st.container():
                 l_alert(f"**{l_date_str}**：{latest['內容']}", icon=l_icon)
             
-            # 2. 顯示歷史公告 (Index 1 到 4，即最新的前 2~5 則)
             if len(df_reversed) > 1:
                 with st.expander("📜 查看近期公告 (近 5 則)"):
-                    history_msgs = df_reversed.iloc[1:6] # 取第 2 筆到第 6 筆
+                    history_msgs = df_reversed.iloc[1:6]
                     for index, row in history_msgs.iterrows():
                         h_type = row['類型'] if '類型' in df_reversed.columns else '一般'
                         h_icon, h_alert = get_msg_style(h_type)
                         h_date_str = row['日期'].strftime('%Y-%m-%d') if pd.notna(row['日期']) else ""
                         h_alert(f"**{h_date_str}**：{row['內容']}", icon=h_icon)
     except Exception as e:
-        # st.error(f"公告載入錯誤: {e}") # 除錯用，正式版可隱藏
         pass 
 
 # --- B. 儀表板與持股清單 ---
@@ -120,7 +113,6 @@ df_trans = load_data(TRANS_URL)
 
 if df_dash is not None and not df_dash.empty:
     try:
-        # 清理資料
         df_dash = df_dash.astype(str)
         df_stocks = df_dash[~df_dash["股票代號"].str.contains("計|Total", na=False)].copy()
         df_stocks["股票代號"] = clean_stock_code(df_stocks["股票代號"])
@@ -134,7 +126,6 @@ if df_dash is not None and not df_dash.empty:
         df_stocks.loc[mask_missing, "目前市值"] = df_stocks.loc[mask_missing, "總投入本金"]
         df_stocks.loc[mask_missing, "帳面損益"] = 0
 
-        # 核心指標
         total_cost = df_stocks["總投入本金"].sum()
         total_value = df_stocks["目前市值"].sum()
         total_profit = total_value - total_cost
@@ -148,7 +139,6 @@ if df_dash is not None and not df_dash.empty:
 
         st.divider()
 
-        # 持股清單
         st.subheader("📋 持股清單")
         display_df = df_stocks[["股票代號", "目前市值", "帳面損益", "總投入本金", "目前股價", "累積總股數"]].copy()
 
@@ -181,7 +171,6 @@ if df_dash is not None and not df_dash.empty:
             selection_mode="single-row"
         )
 
-        # 詳細交易紀錄
         if len(event.selection.rows) > 0:
             selected_index = event.selection.rows[0]
             selected_stock_code = display_df.iloc[selected_index]["股票代號"]
@@ -206,7 +195,7 @@ if df_dash is not None and not df_dash.empty:
                 else:
                     st.error("無法讀取交易表。")
         else:
-            st.caption("👆 點擊可查看明細")
+            st.caption("👆 (手機請左滑) 點擊框框可查看明細")
 
         if st.button('🔄 立即更新'):
             st.cache_data.clear()
@@ -219,12 +208,17 @@ else:
 
 
 # ==========================================
-# 4. 管理員專區 (雙重驗證版)
+# 4. 管理員專區 (雙重驗證 + 自動通知版)
 # ==========================================
 st.markdown("---") 
 st.markdown("### ⚙️ 後台管理")
 
-with st.expander("🔧 點擊開啟管理面板", expanded=False):
+# 判斷面板是否要保持開啟 (預設關閉)
+if 'admin_expanded' not in st.session_state:
+    st.session_state['admin_expanded'] = False
+
+with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['admin_expanded']):
+    
     # --- 檢查是否已經登入管理員 ---
     if not st.session_state.get('admin_logged_in', False):
         st.warning("⚠️ 此區域僅限管理員操作")
@@ -234,6 +228,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=False):
             try:
                 if admin_input == st.secrets["admin_password"]:
                     st.session_state['admin_logged_in'] = True
+                    st.session_state['admin_expanded'] = True # 登入成功後自動展開
                     st.success("身分驗證成功！")
                     st.rerun() 
                 else:
@@ -244,6 +239,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=False):
         st.success("🔓 管理員模式已啟用")
         if st.button("🔒 登出管理員"):
             st.session_state['admin_logged_in'] = False
+            st.session_state['admin_expanded'] = False
             st.rerun()
 
         tab1, tab2, tab3 = st.tabs(["📢 發布公告", "💸 資金入帳", "📝 新增交易"])
@@ -267,7 +263,12 @@ with st.expander("🔧 點擊開啟管理面板", expanded=False):
                                 "content": new_content
                             }
                             requests.post(GAS_URL, json=post_data)
-                            st.success("✅ 公告已發布！")
+                            
+                            # ★★★ 改用 Toast (彈出式通知) ★★★
+                            st.toast("✅ 公告已發布！", icon='🎉')
+                            
+                            # 保持面板開啟
+                            st.session_state['admin_expanded'] = True
                             st.cache_data.clear()
                         except Exception as e:
                             st.error(f"錯誤：{e}")
@@ -299,7 +300,10 @@ with st.expander("🔧 點擊開啟管理面板", expanded=False):
                         if response.status_code == 200:
                             result = response.json()
                             if result.get("status") == "success":
-                                st.success(f"✅ 成功！已將款項填入 {f_date.month} 月的格子中。")
+                                # ★★★ 改用 Toast (彈出式通知) ★★★
+                                st.toast(f"✅ 成功！已將款項填入 {f_date.month} 月的格子中。", icon='💸')
+                                
+                                st.session_state['admin_expanded'] = True
                             else:
                                 st.error(f"❌ 寫入失敗：{result.get('message')}")
                         else:
@@ -307,7 +311,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=False):
                     except Exception as e:
                         st.error(f"錯誤：{e}")
 
-        # === Tab 3: 新增交易 (無手續費計算版) ===
+        # === Tab 3: 新增交易 (Toast 版) ===
         with tab3:
             with st.form("trade_form"):
                 col1, col2 = st.columns(2)
@@ -323,7 +327,6 @@ with st.expander("🔧 點擊開啟管理面板", expanded=False):
                 
                 if st.form_submit_button("📝 記錄交易"):
                     try:
-                        # 總金額只算 (單價 x 股數)
                         t_total_final = int(t_price * t_shares)
                         
                         post_data = {
@@ -338,7 +341,13 @@ with st.expander("🔧 點擊開啟管理面板", expanded=False):
                             "regular": "Y" if is_regular else ""
                         }
                         requests.post(GAS_URL, json=post_data)
-                        st.success(f"✅ 已記錄：{t_type} {t_stock} {t_shares} 股！(投入 ${t_total_final:,}，手續費另計)")
+                        
+                        # ★★★ 改用 Toast (彈出式通知) ★★★
+                        # 這裡會從右下角/右上角跳出來，約 4 秒後自動消失
+                        st.toast(f"✅ 已記錄：{t_type} {t_stock} {t_shares} 股！\n(投入 ${t_total_final:,}，手續費另計)", icon='📝')
+                        
+                        # 保持面板開啟，不用重開
+                        st.session_state['admin_expanded'] = True
                         st.cache_data.clear()
                     except Exception as e:
                         st.error(f"錯誤：{e}")
