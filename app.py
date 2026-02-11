@@ -15,8 +15,8 @@ def check_password():
 
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.markdown("## 🔒 歡迎踏入\n## 雞虎大殿堂 🐔🐯") 
-        password_input = st.text_input("請輸入神秘數字", type="password")
+        st.markdown("##  歡迎踏入\n## 雞虎大殿堂 🐔🐯") 
+        password_input = st.text_input(" 🔒 請輸入神秘數字", type="password")
 
         if password_input:
             try:
@@ -25,7 +25,7 @@ def check_password():
                     st.session_state['password_correct'] = True
                     st.rerun()
                 else:
-                    st.error("密碼錯誤 ❌")
+                    st.error("❌密碼錯誤，請贈與🐔一杯五十嵐。 ")
             except KeyError:
                 st.error("系統錯誤：未設定密碼 (請檢查 Secrets)")
                 return False
@@ -195,7 +195,7 @@ if df_dash is not None and not df_dash.empty:
                 else:
                     st.error("無法讀取交易表。")
         else:
-            st.caption("👆 (手機請左滑) 點擊框框可查看明細")
+            st.caption("👆 點擊可查看明細")
 
         if st.button('🔄 立即更新'):
             st.cache_data.clear()
@@ -278,9 +278,9 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
             with st.form("fund_form"):
                 col1, col2, col3 = st.columns(3)
                 with col1:
-                    f_date = st.date_input("入帳日期", datetime.now()) 
+                    f_date = st.date_input("轉帳日期", datetime.now()) 
                 with col2:
-                    f_name = st.selectbox("誰轉錢進來？", ["建蒼", "奕州"]) 
+                    f_name = st.selectbox("誰轉錢進來？", [" 🐯建蒼", " 🐔奕州"]) 
                 with col3:
                     f_amount = st.number_input("金額", min_value=0, step=1000, value=10000)
                 
@@ -317,13 +317,13 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                 col1, col2 = st.columns(2)
                 with col1:
                     t_date = st.date_input("交易日期", datetime.now())
-                    t_stock = st.selectbox("股票代號", ["0050", "006208", "00919", "00878", "2330"])
+                    t_stock = st.selectbox("股票代號", ["0050", "006208", "00919"])
                     t_type = st.selectbox("交易類別", ["買入", "賣出"])
                     is_regular = st.checkbox("是定期定額嗎？", value=True)
                 with col2:
                     t_price = st.number_input("成交單價", min_value=0.0, step=0.1, format="%.2f")
                     t_shares = st.number_input("成交股數", min_value=0, step=100)
-                    t_fee = st.number_input("手續費 (僅紀錄)", min_value=0, value=20)
+                    t_fee = st.number_input("手續費", min_value=0, value=20)
                 
                 if st.form_submit_button("📝 記錄交易"):
                     try:
@@ -344,10 +344,11 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                         
                         # ★★★ 改用 Toast (彈出式通知) ★★★
                         # 這裡會從右下角/右上角跳出來，約 4 秒後自動消失
-                        st.toast(f"✅ 已記錄：{t_type} {t_stock} {t_shares} 股！\n(投入 ${t_total_final:,}，手續費另計)", icon='📝')
+                        st.toast(f"✅ 已記錄：{t_type} {t_stock} {t_shares} 股！\n(總計 ${t_total_final:,}元)", icon='📝')
                         
                         # 保持面板開啟，不用重開
                         st.session_state['admin_expanded'] = True
                         st.cache_data.clear()
                     except Exception as e:
                         st.error(f"錯誤：{e}")
+
