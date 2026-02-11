@@ -14,7 +14,7 @@ def check_password():
 
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.header("## 歡迎踏入\n## 雞虎大殿堂")
+        st.header("歡迎踏入\n## 雞虎大殿堂")
         password_input = st.text_input("🔒 請輸入神秘數字", type="password")
 
         if password_input:
@@ -216,6 +216,7 @@ if df_dash is not None and not df_dash.empty:
         st.error(f"程式錯誤：{e}")
 else:
     st.error("讀取失敗，請檢查 Secrets 設定。")
+
 
 
 
