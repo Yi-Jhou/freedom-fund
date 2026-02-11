@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import requests # 記得要確認 requirements.txt 有沒有這個，通常 Streamlit 雲端自帶
 from datetime import datetime
 
 # ==========================================
@@ -14,8 +15,9 @@ def check_password():
 
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.header("歡迎踏入\n## 雞虎大殿堂🐔🐯 ")
-        password_input = st.text_input("🔒 請輸入神秘數字", type="password")
+        # 手機版優化：使用 Markdown 強制換行，避免標題被切到
+        st.markdown("## 🔒 歡迎踏入\n## 雞虎大殿堂 🐔🐯") 
+        password_input = st.text_input("請輸入神秘數字", type="password")
 
         if password_input:
             try:
@@ -40,8 +42,9 @@ try:
     DASHBOARD_URL = st.secrets["public_sheet_url"]
     TRANS_URL = st.secrets["trans_sheet_url"]
     MSG_URL = st.secrets["msg_sheet_url"] 
+    GAS_URL = st.secrets["gas_url"] # 讀取你的 Google Apps Script 網址
 except (FileNotFoundError, KeyError):
-    st.error("🔒 錯誤：找不到 Secrets 設定！")
+    st.error("🔒 錯誤：找不到 Secrets 設定！請檢查 Streamlit Cloud 後台。")
     st.stop()
 
 # ==========================================
@@ -67,28 +70,130 @@ def clean_number(x):
 # ==========================================
 st.title("💰 存股儀表板")
 
-# --- 🔥 新功能：智慧公告欄 (視覺優化版) ---
+# --- 🔥 新功能：管理員專區 (全能管家) ---
+with st.expander("🔧 管理員專區 (點擊展開)", expanded=False):
+    # 使用 Tabs 分頁，介面更乾淨
+    tab1, tab2, tab3 = st.tabs(["📢 發布公告", "💸 資金入帳", "📝 新增交易"])
+
+    # === Tab 1: 發公告 ===
+    with tab1:
+        with st.form("msg_form"):
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                new_type = st.selectbox("類型", ["🎉 慶祝", "🔔 提醒", "📢 一般", "🚨 緊急"])
+            with col2:
+                new_content = st.text_input("公告內容", placeholder="例如：資產突破 50 萬啦！")
+            
+            if st.form_submit_button("送出公告"):
+                if new_content:
+                    try:
+                        post_data = {
+                            "action": "msg",
+                            "date": datetime.now().strftime("%Y-%m-%d"),
+                            "type": new_type,
+                            "content": new_content
+                        }
+                        requests.post(GAS_URL, json=post_data)
+                        st.success("✅ 公告已發布！")
+                        st.cache_data.clear()
+                    except Exception as e:
+                        st.error(f"錯誤：{e}")
+
+    # === Tab 2: 資金入帳 (填空模式) ===
+    with tab2:
+        with st.form("fund_form"):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                # 這裡選的日期很重要，程式會抓這裡的「月份」去對應 Excel
+                f_date = st.date_input("入帳日期", datetime.now()) 
+            with col2:
+                # 這裡的名字必須跟 Excel C欄 一模一樣
+                f_name = st.selectbox("誰轉錢進來？", ["建蒼", "奕州"]) 
+            with col3:
+                f_amount = st.number_input("金額", min_value=0, step=1000, value=10000)
+            
+            f_note = st.text_input("備註", placeholder="例如：加碼金")
+
+            if st.form_submit_button("💰 確認入帳"):
+                try:
+                    post_data = {
+                        "action": "fund", 
+                        "date": f_date.strftime("%Y-%m-%d"), 
+                        "name": f_name,
+                        "amount": f_amount,
+                        "note": f_note
+                    }
+                    response = requests.post(GAS_URL, json=post_data)
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        if result.get("status") == "success":
+                            st.success(f"✅ 成功！已將款項填入 {f_date.month} 月的格子中。")
+                        else:
+                            st.error(f"❌ 寫入失敗：{result.get('message')}")
+                    else:
+                        st.error("❌ 連線錯誤")
+                except Exception as e:
+                    st.error(f"錯誤：{e}")
+
+    # === Tab 3: 新增交易 (自動找空白行) ===
+    with tab3:
+        with st.form("trade_form"):
+            col1, col2 = st.columns(2)
+            with col1:
+                t_date = st.date_input("交易日期", datetime.now())
+                t_stock = st.selectbox("股票代號", ["0050", "006208", "00919", "00878", "2330"])
+                t_type = st.selectbox("交易類別", ["買入", "賣出"])
+                is_regular = st.checkbox("是定期定額嗎？", value=True)
+            with col2:
+                t_price = st.number_input("成交單價", min_value=0.0, step=0.1, format="%.2f")
+                t_shares = st.number_input("成交股數", min_value=0, step=100)
+                t_fee = st.number_input("手續費", min_value=0, value=20)
+            
+            # 自動計算預估金額
+            t_total_est = int(t_price * t_shares + t_fee)
+            st.caption(f"📊 預估總投入金額：${t_total_est:,}")
+            
+            # 實際輸入總金額 (防止手續費計算誤差，手動輸入最準)
+            t_total_final = st.number_input("實際扣款總金額 (含手續費)", min_value=0, value=t_total_est)
+
+            if st.form_submit_button("📝 記錄交易"):
+                try:
+                    post_data = {
+                        "action": "trade",
+                        "date": t_date.strftime("%Y-%m-%d"),
+                        "stock": t_stock,
+                        "type": t_type,
+                        "price": t_price,
+                        "total": t_total_final,
+                        "shares": t_shares,
+                        "fee": t_fee,
+                        "regular": "Y" if is_regular else ""
+                    }
+                    requests.post(GAS_URL, json=post_data)
+                    st.success(f"✅ 已記錄：{t_type} {t_stock} {t_shares} 股！")
+                    st.cache_data.clear()
+                except Exception as e:
+                    st.error(f"錯誤：{e}")
+
+# --- 顯示公告欄 (View) ---
 df_msg = load_data(MSG_URL)
 
 if df_msg is not None and not df_msg.empty:
     try:
         df_msg.columns = df_msg.columns.str.strip()
-        
         if '日期' in df_msg.columns and '內容' in df_msg.columns:
-            # 轉換日期並排序 (最新的在最上面)
             df_msg['日期'] = pd.to_datetime(df_msg['日期'], errors='coerce')
             df_msg = df_msg.dropna(subset=['日期'])
             df_sorted = df_msg.sort_values(by='日期', ascending=False)
             
             if not df_sorted.empty:
-                # 定義一個小函數來決定樣式 (避免重複寫程式碼)
                 def get_msg_style(msg_type):
                     if '慶祝' in str(msg_type): return "🎉", st.success
                     elif '提醒' in str(msg_type) or '重要' in str(msg_type): return "🔔", st.warning
                     elif '緊急' in str(msg_type): return "🚨", st.error
                     else: return "📢", st.info
 
-                # === A. 顯示最新的一則 (置頂) ===
                 latest = df_sorted.iloc[0]
                 l_type = latest['類型'] if '類型' in df_sorted.columns else '一般'
                 l_icon, l_alert = get_msg_style(l_type)
@@ -97,21 +202,15 @@ if df_msg is not None and not df_msg.empty:
                 with st.container():
                     l_alert(f"**{l_date}**：{latest['內容']}", icon=l_icon)
                 
-                # === B. 顯示歷史公告 (第2~6則，共5則) ===
                 if len(df_sorted) > 1:
                     with st.expander("📜 查看近期公告 (近 5 則)"):
-                        # 取出第 1 筆到第 5 筆 (Python index 1:6)
                         history_msgs = df_sorted.iloc[1:6]
-                        
                         for index, row in history_msgs.iterrows():
                             h_type = row['類型'] if '類型' in df_sorted.columns else '一般'
                             h_icon, h_alert = get_msg_style(h_type)
                             h_date = row['日期'].strftime('%Y-%m-%d')
-                            
-                            # 顯示同樣風格的彩色框
                             h_alert(f"**{h_date}**：{row['內容']}", icon=h_icon)
-
-    except Exception as e:
+    except Exception:
         pass 
 
 # 讀取主要資料
@@ -206,7 +305,7 @@ if df_dash is not None and not df_dash.empty:
                 else:
                     st.error("無法讀取交易表。")
         else:
-            st.caption("👆 點擊框框可查看明細")
+            st.caption("👆 (手機請左滑) 點擊框框可查看明細")
 
         if st.button('🔄 立即更新'):
             st.cache_data.clear()
@@ -216,8 +315,3 @@ if df_dash is not None and not df_dash.empty:
         st.error(f"程式錯誤：{e}")
 else:
     st.error("讀取失敗，請檢查 Secrets 設定。")
-
-
-
-
-
