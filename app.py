@@ -97,7 +97,7 @@ if df_msg is not None and not df_msg.empty:
                 l_alert(f"**{l_date_str}**：{latest['內容']}", icon=l_icon)
             
             if len(df_reversed) > 1:
-                with st.expander("📜 查看近期公告 (近 5 則)"):
+                with st.expander("📜 查看近期公告"):
                     history_msgs = df_reversed.iloc[1:6]
                     for index, row in history_msgs.iterrows():
                         h_type = row['類型'] if '類型' in df_reversed.columns else '一般'
@@ -351,4 +351,5 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                         st.cache_data.clear()
                     except Exception as e:
                         st.error(f"錯誤：{e}")
+
 
