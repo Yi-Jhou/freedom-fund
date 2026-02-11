@@ -1,12 +1,12 @@
 import streamlit as st
 import pandas as pd
-import requests 
-from datetime import datetime, timedelta # 引入 timedelta 來計算時間差
+import requests
+from datetime import datetime, timedelta
 
 # ==========================================
 # 0. 登入系統 (門神)
 # ==========================================
-st.set_page_config(page_title="雞與虎的投資看板", page_icon="📈", layout="wide") 
+st.set_page_config(page_title="雞與虎的投資看板", page_icon="📈", layout="wide")
 
 def check_password():
     """回傳 True 代表密碼正確，False 代表尚未登入或錯誤"""
@@ -15,7 +15,7 @@ def check_password():
 
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.markdown("## 🔒 歡迎踏入\n## 雞虎大殿堂 🐔🐯") 
+        st.markdown("## 🔒 歡迎踏入\n## 雞虎大殿堂 🐔🐯")
         password_input = st.text_input("請輸入神秘數字", type="password")
 
         if password_input:
@@ -40,9 +40,9 @@ if not check_password():
 try:
     DASHBOARD_URL = st.secrets["public_sheet_url"]
     TRANS_URL = st.secrets["trans_sheet_url"]
-    MSG_URL = st.secrets["msg_sheet_url"] 
-    ACT_URL = st.secrets["act_sheet_url"] 
-    GAS_URL = st.secrets["gas_url"] 
+    MSG_URL = st.secrets["msg_sheet_url"]
+    ACT_URL = st.secrets["act_sheet_url"]
+    GAS_URL = st.secrets["gas_url"]
 except (FileNotFoundError, KeyError):
     st.error("🔒 錯誤：找不到 Secrets 設定！請檢查 Streamlit Cloud 後台。")
     st.stop()
@@ -355,16 +355,25 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     except Exception as e:
                         st.error(f"錯誤：{e}")
 
-        # === Tab 3: 新增交易 (整合定期定額格式版) ===
+        # === Tab 3: 新增交易 (整合：定期定額格式 + 股票彈性輸入) ===
         with tab3:
             with st.form("trade_form"):
                 col1, col2 = st.columns(2)
                 with col1:
                     t_date = st.date_input("交易日期", datetime.now())
-                    t_stock = st.selectbox("股票代號", ["0050", "006208", "00919", "00878", "2330"])
+                    
+                    # --- 股票代號：選單 + 彈性輸入 ---
+                    fav_stocks = ["0050", "006208", "00919", "00878", "2330"]
+                    selected_option = st.selectbox("股票代號", fav_stocks + ["🖊️ 自行輸入"])
+                    
+                    if selected_option == "🖊️ 自行輸入":
+                        t_stock = st.text_input("請輸入代號", placeholder="例如：2412").strip()
+                    else:
+                        t_stock = selected_option
+                    
                     t_type = st.selectbox("交易類別", ["買入", "賣出"])
-                    # 這裡是你原本的勾選框
                     is_regular = st.checkbox("是定期定額嗎？", value=True)
+                    
                 with col2:
                     t_price = st.number_input("成交單價", min_value=0.0, step=0.1, format="%.2f")
                     t_shares = st.number_input("成交股數", min_value=0, step=100)
@@ -372,14 +381,14 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                 
                 if st.form_submit_button("📝 記錄交易"):
                     try:
+                        # 計算總價
                         t_total_final = int(t_price * t_shares)
                         
-                        # --- 整合你的邏輯 ---
-                        # 1. 先準備要傳給 Google Sheet 的資料
+                        # 1. 準備資料
                         post_data = {
                             "action": "trade",
                             "date": t_date.strftime("%Y-%m-%d"),
-                            "stock": t_stock,
+                            "stock": t_stock, # 這裡會吃到上面判斷後的最終代號
                             "type": t_type,
                             "price": t_price,
                             "total": t_total_final, 
@@ -391,16 +400,14 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                         # 2. 送出資料
                         requests.post(GAS_URL, json=post_data)
                         
-                        # 3. 顯示成功訊息 (這裡加入你的格式判斷)
+                        # 3. 顯示成功訊息 (使用你的定期定額專屬格式)
                         if is_regular and t_type == "買入":
-                            # 符合「定期定額」且是「買入」，使用你指定的詳細格式
                             msg = f"(定期定額) 買入 {t_stock} {t_shares}股 @ {t_price} ，總共 {t_total_final} 元"
                             st.toast(f"✅ {msg}", icon='📝')
                         else:
-                            # 如果不是 (例如賣出，或單筆加碼)，顯示簡單版即可
                             st.toast(f"✅ 已記錄：{t_type} {t_stock} {t_shares} 股 (總額 ${t_total_final:,})", icon='📝')
                         
-                        # 保持面板開啟
+                        # 保持面板開啟 & 清除快取
                         st.session_state['admin_expanded'] = True
                         st.cache_data.clear()
 
