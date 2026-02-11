@@ -15,8 +15,8 @@ def check_password():
 
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.markdown("##  歡迎踏入\n## 雞虎大殿堂 🐔🐯") 
-        password_input = st.text_input(" 🔒 請輸入神秘數字", type="password")
+        st.markdown("## 🔒 歡迎踏入\n## 雞虎大殿堂 🐔🐯") 
+        password_input = st.text_input("請輸入神秘數字", type="password")
 
         if password_input:
             try:
@@ -41,6 +41,7 @@ try:
     DASHBOARD_URL = st.secrets["public_sheet_url"]
     TRANS_URL = st.secrets["trans_sheet_url"]
     MSG_URL = st.secrets["msg_sheet_url"] 
+    ACT_URL = st.secrets["act_sheet_url"] # 記得確認 secrets 有這行
     GAS_URL = st.secrets["gas_url"] 
 except (FileNotFoundError, KeyError):
     st.error("🔒 錯誤：找不到 Secrets 設定！請檢查 Streamlit Cloud 後台。")
@@ -195,7 +196,7 @@ if df_dash is not None and not df_dash.empty:
                 else:
                     st.error("無法讀取交易表。")
         else:
-            st.caption("👆 點擊可查看明細")
+            st.caption("👆 (手機請左滑) 點擊框框可查看明細")
 
         if st.button('🔄 立即更新'):
             st.cache_data.clear()
@@ -205,6 +206,47 @@ if df_dash is not None and not df_dash.empty:
         st.error(f"程式錯誤：{e}")
 else:
     st.error("讀取失敗，請檢查 Secrets 設定。")
+
+st.divider()
+
+# ==========================================
+# C. ⚡ 最新動態流水帳 (讀取「動態」分頁)
+# ==========================================
+st.subheader("⚡ 最新動態")
+
+df_act = load_data(ACT_URL)
+
+if df_act is not None and not df_act.empty:
+    try:
+        df_act.columns = df_act.columns.str.strip()
+        # 確保有這三欄
+        if '日期' in df_act.columns and '內容' in df_act.columns:
+            df_act['日期'] = pd.to_datetime(df_act['日期'], errors='coerce')
+            # 倒序，最新的在最上面
+            df_act_rev = df_act.iloc[::-1].reset_index(drop=True)
+            
+            # 只顯示前 5 筆，以免太長
+            recent_acts = df_act_rev.head(5)
+
+            for index, row in recent_acts.iterrows():
+                # 根據「類型」給予不同的 Emoji
+                icon = "🔹" # 預設
+                row_type = str(row['類型']) if '類型' in df_act.columns else ""
+                
+                if "入金" in row_type:
+                    icon = "💰"
+                elif "交易" in row_type:
+                    icon = "⚖️"
+                
+                date_str = row['日期'].strftime('%m/%d') if pd.notna(row['日期']) else ""
+                
+                # 簡單清單樣式
+                st.markdown(f"{icon} **{date_str}** | {row['內容']}")
+                
+    except Exception as e:
+        st.caption("尚無動態")
+else:
+    st.caption("尚無動態資料 (請檢查 Secrets 的 act_sheet_url)")
 
 
 # ==========================================
@@ -278,9 +320,9 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
             with st.form("fund_form"):
                 col1, col2, col3 = st.columns(3)
                 with col1:
-                    f_date = st.date_input("轉帳日期", datetime.now()) 
+                    f_date = st.date_input("入帳日期", datetime.now()) 
                 with col2:
-                    f_name = st.selectbox("🐯🐔誰轉錢進來？", ["建蒼", "奕州"]) 
+                    f_name = st.selectbox("誰轉錢進來？", ["建蒼", "奕州"]) 
                 with col3:
                     f_amount = st.number_input("金額", min_value=0, step=1000, value=10000)
                 
@@ -317,13 +359,13 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                 col1, col2 = st.columns(2)
                 with col1:
                     t_date = st.date_input("交易日期", datetime.now())
-                    t_stock = st.selectbox("股票代號", ["0050", "006208", "00919"])
+                    t_stock = st.selectbox("股票代號", ["0050", "006208", "00919", "00878", "2330"])
                     t_type = st.selectbox("交易類別", ["買入", "賣出"])
                     is_regular = st.checkbox("是定期定額嗎？", value=True)
                 with col2:
                     t_price = st.number_input("成交單價", min_value=0.0, step=0.1, format="%.2f")
                     t_shares = st.number_input("成交股數", min_value=0, step=100)
-                    t_fee = st.number_input("手續費", min_value=0, value=20)
+                    t_fee = st.number_input("手續費 (僅紀錄)", min_value=0, value=20)
                 
                 if st.form_submit_button("📝 記錄交易"):
                     try:
@@ -344,14 +386,10 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                         
                         # ★★★ 改用 Toast (彈出式通知) ★★★
                         # 這裡會從右下角/右上角跳出來，約 4 秒後自動消失
-                        st.toast(f"✅ 已記錄：{t_type} {t_stock} {t_shares} 股！\n(總計 ${t_total_final:,}元)", icon='📝')
+                        st.toast(f"✅ 已記錄：{t_type} {t_stock} {t_shares} 股！\n(投入 ${t_total_final:,}，手續費另計)", icon='📝')
                         
                         # 保持面板開啟，不用重開
                         st.session_state['admin_expanded'] = True
                         st.cache_data.clear()
                     except Exception as e:
                         st.error(f"錯誤：{e}")
-
-
-
-
