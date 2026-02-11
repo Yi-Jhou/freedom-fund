@@ -353,7 +353,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     except Exception as e:
                         st.error(f"錯誤：{e}")
 
-        # === Tab 3: 新增交易 (Toast 版) ===
+        # === Tab 3: 新增交易 (整合定期定額格式版) ===
         with tab3:
             with st.form("trade_form"):
                 col1, col2 = st.columns(2)
@@ -361,6 +361,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     t_date = st.date_input("交易日期", datetime.now())
                     t_stock = st.selectbox("股票代號", ["0050", "006208", "00919", "00878", "2330"])
                     t_type = st.selectbox("交易類別", ["買入", "賣出"])
+                    # 這裡是你原本的勾選框
                     is_regular = st.checkbox("是定期定額嗎？", value=True)
                 with col2:
                     t_price = st.number_input("成交單價", min_value=0.0, step=0.1, format="%.2f")
@@ -371,6 +372,8 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     try:
                         t_total_final = int(t_price * t_shares)
                         
+                        # --- 整合你的邏輯 ---
+                        # 1. 先準備要傳給 Google Sheet 的資料
                         post_data = {
                             "action": "trade",
                             "date": t_date.strftime("%Y-%m-%d"),
@@ -382,14 +385,22 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                             "fee": t_fee,          
                             "regular": "Y" if is_regular else ""
                         }
+                        
+                        # 2. 送出資料
                         requests.post(GAS_URL, json=post_data)
                         
-                        # ★★★ 改用 Toast (彈出式通知) ★★★
-                        # 這裡會從右下角/右上角跳出來，約 4 秒後自動消失
-                        st.toast(f"✅ 已記錄：{t_type} {t_stock} {t_shares} 股！\n(投入 ${t_total_final:,}，手續費另計)", icon='📝')
+                        # 3. 顯示成功訊息 (這裡加入你的格式判斷)
+                        if is_regular and t_type == "買入":
+                            # 符合「定期定額」且是「買入」，使用你指定的詳細格式
+                            msg = f"(定期定額) 買入 {t_stock} {t_shares}股 @ {t_price} ，總共 {t_total_final} 元"
+                            st.toast(f"✅ {msg}", icon='📝')
+                        else:
+                            # 如果不是 (例如賣出，或單筆加碼)，顯示簡單版即可
+                            st.toast(f"✅ 已記錄：{t_type} {t_stock} {t_shares} 股 (總額 ${t_total_final:,})", icon='📝')
                         
-                        # 保持面板開啟，不用重開
+                        # 保持面板開啟
                         st.session_state['admin_expanded'] = True
                         st.cache_data.clear()
+
                     except Exception as e:
                         st.error(f"錯誤：{e}")
