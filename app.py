@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests 
-from datetime import datetime
+from datetime import datetime, timedelta # 引入 timedelta 來計算時間差
 
 # ==========================================
 # 0. 登入系統 (門神)
@@ -41,7 +41,7 @@ try:
     DASHBOARD_URL = st.secrets["public_sheet_url"]
     TRANS_URL = st.secrets["trans_sheet_url"]
     MSG_URL = st.secrets["msg_sheet_url"] 
-    ACT_URL = st.secrets["act_sheet_url"] # 記得確認 secrets 有這行
+    ACT_URL = st.secrets["act_sheet_url"] 
     GAS_URL = st.secrets["gas_url"] 
 except (FileNotFoundError, KeyError):
     st.error("🔒 錯誤：找不到 Secrets 設定！請檢查 Streamlit Cloud 後台。")
@@ -108,7 +108,7 @@ if df_msg is not None and not df_msg.empty:
     except Exception as e:
         pass 
 
-# --- B. 儀表板與持股清單 ---
+# --- B. 儀表板核心數據 ---
 df_dash = load_data(DASHBOARD_URL)
 df_trans = load_data(TRANS_URL)
 
@@ -140,6 +140,54 @@ if df_dash is not None and not df_dash.empty:
 
         st.divider()
 
+        # ==========================================
+        # C. ⚡ 最新動態流水帳 (移到持股清單上方)
+        # ==========================================
+        st.subheader("⚡ 最新動態 (近 30 天)")
+
+        df_act = load_data(ACT_URL)
+
+        if df_act is not None and not df_act.empty:
+            try:
+                df_act.columns = df_act.columns.str.strip()
+                if '日期' in df_act.columns and '內容' in df_act.columns:
+                    df_act['日期'] = pd.to_datetime(df_act['日期'], errors='coerce')
+                    
+                    # 1. 設定時間過濾：只留近 30 天
+                    cutoff_date = datetime.now() - timedelta(days=30)
+                    df_recent = df_act[df_act['日期'] >= cutoff_date]
+                    
+                    # 2. 倒序排列 (最新的在最上面)
+                    df_recent = df_recent.sort_values(by='日期', ascending=False).reset_index(drop=True)
+                    
+                    if not df_recent.empty:
+                        for index, row in df_recent.iterrows():
+                            # Emoji 邏輯
+                            icon = "🔹" 
+                            row_type = str(row['類型']) if '類型' in df_act.columns else ""
+                            
+                            if "入金" in row_type:
+                                icon = "💰"
+                            elif "交易" in row_type:
+                                icon = "⚖️"
+                            
+                            # 3. 日期格式加上年份 (例如 2026/02/11)
+                            date_str = row['日期'].strftime('%Y/%m/%d') if pd.notna(row['日期']) else ""
+                            
+                            st.markdown(f"{icon} **{date_str}** | {row['內容']}")
+                    else:
+                        st.caption("近一個月無動態")
+                        
+            except Exception as e:
+                st.caption("尚無動態")
+        else:
+            st.caption("尚無動態資料")
+            
+        st.divider() # 加個分隔線，區分動態和持股清單
+
+        # ==========================================
+        # D. 持股清單
+        # ==========================================
         st.subheader("📋 持股清單")
         display_df = df_stocks[["股票代號", "目前市值", "帳面損益", "總投入本金", "目前股價", "累積總股數"]].copy()
 
@@ -207,50 +255,9 @@ if df_dash is not None and not df_dash.empty:
 else:
     st.error("讀取失敗，請檢查 Secrets 設定。")
 
-st.divider()
 
 # ==========================================
-# C. ⚡ 最新動態流水帳 (讀取「動態」分頁)
-# ==========================================
-st.subheader("⚡ 最新動態")
-
-df_act = load_data(ACT_URL)
-
-if df_act is not None and not df_act.empty:
-    try:
-        df_act.columns = df_act.columns.str.strip()
-        # 確保有這三欄
-        if '日期' in df_act.columns and '內容' in df_act.columns:
-            df_act['日期'] = pd.to_datetime(df_act['日期'], errors='coerce')
-            # 倒序，最新的在最上面
-            df_act_rev = df_act.iloc[::-1].reset_index(drop=True)
-            
-            # 只顯示前 5 筆，以免太長
-            recent_acts = df_act_rev.head(5)
-
-            for index, row in recent_acts.iterrows():
-                # 根據「類型」給予不同的 Emoji
-                icon = "🔹" # 預設
-                row_type = str(row['類型']) if '類型' in df_act.columns else ""
-                
-                if "入金" in row_type:
-                    icon = "💰"
-                elif "交易" in row_type:
-                    icon = "⚖️"
-                
-                date_str = row['日期'].strftime('%m/%d') if pd.notna(row['日期']) else ""
-                
-                # 簡單清單樣式
-                st.markdown(f"{icon} **{date_str}** | {row['內容']}")
-                
-    except Exception as e:
-        st.caption("尚無動態")
-else:
-    st.caption("尚無動態資料 (請檢查 Secrets 的 act_sheet_url)")
-
-
-# ==========================================
-# 4. 管理員專區 (雙重驗證 + 自動通知版)
+# 4. 管理員專區 (保持在最下方)
 # ==========================================
 st.markdown("---") 
 st.markdown("### ⚙️ 後台管理")
@@ -306,10 +313,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                             }
                             requests.post(GAS_URL, json=post_data)
                             
-                            # ★★★ 改用 Toast (彈出式通知) ★★★
                             st.toast("✅ 公告已發布！", icon='🎉')
-                            
-                            # 保持面板開啟
                             st.session_state['admin_expanded'] = True
                             st.cache_data.clear()
                         except Exception as e:
@@ -342,9 +346,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                         if response.status_code == 200:
                             result = response.json()
                             if result.get("status") == "success":
-                                # ★★★ 改用 Toast (彈出式通知) ★★★
                                 st.toast(f"✅ 成功！已將款項填入 {f_date.month} 月的格子中。", icon='💸')
-                                
                                 st.session_state['admin_expanded'] = True
                             else:
                                 st.error(f"❌ 寫入失敗：{result.get('message')}")
