@@ -15,7 +15,7 @@ def check_password():
 
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.markdown("## 歡迎踏入\n## 雞虎大殿堂 🐔🐯")
+        st.markdown("## 歡迎踏入\n## 🐔🐯大殿堂")
         password_input = st.text_input("🔒 請輸入神秘數字", type="password")
 
         if password_input:
@@ -419,5 +419,6 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
 
                     except Exception as e:
                         st.error(f"錯誤：{e}")
+
 
 
