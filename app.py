@@ -15,8 +15,8 @@ def check_password():
 
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.markdown("## 🔒 歡迎踏入\n## 雞虎大殿堂 🐔🐯")
-        password_input = st.text_input("請輸入神秘數字", type="password")
+        st.markdown("## 歡迎踏入\n## 雞虎大殿堂 🐔🐯")
+        password_input = st.text_input("🔒 請輸入神秘數字", type="password")
 
         if password_input:
             try:
@@ -143,7 +143,7 @@ if df_dash is not None and not df_dash.empty:
         # ==========================================
         # C. ⚡ 最新動態流水帳 (移到持股清單上方)
         # ==========================================
-        st.subheader("⚡ 最新動態 (近 30 天)")
+        st.subheader("⚡最新動態 (近 30 天)")
 
         df_act = load_data(ACT_URL)
 
@@ -250,7 +250,7 @@ if df_dash is not None and not df_dash.empty:
                 else:
                     st.error("無法讀取交易表。")
         else:
-            st.caption("👆 (手機請左滑) 點擊框框可查看明細")
+            st.caption("👆點擊可查看明細")
 
         if st.button('🔄 立即更新'):
             st.cache_data.clear()
@@ -369,7 +369,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     t_date = st.date_input("交易日期", datetime.now())
                     
                     # --- 股票代號：選單 + 彈性輸入 ---
-                    fav_stocks = ["0050", "006208", "00919", "00878", "2330"]
+                    fav_stocks = ["0050", "00919", "006208" ]
                     selected_option = st.selectbox("股票代號", fav_stocks + ["🖊️ 自行輸入"])
                     
                     if selected_option == "🖊️ 自行輸入":
@@ -419,4 +419,5 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
 
                     except Exception as e:
                         st.error(f"錯誤：{e}")
+
 
