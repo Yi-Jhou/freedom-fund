@@ -16,7 +16,7 @@ def check_password():
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
         st.markdown("##  歡迎踏入\n## 雞虎大殿堂 🐔🐯") 
-        password_input = st.text_input("🔒請輸入神秘數字", type="password")
+        password_input = st.text_input("🔒 請輸入神秘數字", type="password")
 
         if password_input:
             try:
@@ -25,7 +25,7 @@ def check_password():
                     st.session_state['password_correct'] = True
                     st.rerun()
                 else:
-                    st.error("❌輸入錯誤，罰你給我一杯五十嵐。")
+                    st.error("密碼錯誤 ❌")
             except KeyError:
                 st.error("系統錯誤：未設定密碼 (請檢查 Secrets)")
                 return False
@@ -69,41 +69,49 @@ def clean_number(x):
 # ==========================================
 st.title("💰 存股儀表板")
 
-# --- A. 顯示公告欄 (置頂) ---
+# --- A. 智慧公告欄 (修正邏輯：抓 Excel 最下面那筆) ---
 df_msg = load_data(MSG_URL)
 
 if df_msg is not None and not df_msg.empty:
     try:
         df_msg.columns = df_msg.columns.str.strip()
-        if '日期' in df_msg.columns and '內容' in df_msg.columns:
+        # 轉換日期格式 (為了顯示漂亮)
+        if '日期' in df_msg.columns:
             df_msg['日期'] = pd.to_datetime(df_msg['日期'], errors='coerce')
-            df_msg = df_msg.dropna(subset=['日期'])
-            df_sorted = df_msg.sort_values(by='日期', ascending=False)
-            
-            if not df_sorted.empty:
-                def get_msg_style(msg_type):
-                    if '慶祝' in str(msg_type): return "🎉", st.success
-                    elif '提醒' in str(msg_type) or '重要' in str(msg_type): return "🔔", st.warning
-                    elif '緊急' in str(msg_type): return "🚨", st.error
-                    else: return "📢", st.info
 
-                latest = df_sorted.iloc[0]
-                l_type = latest['類型'] if '類型' in df_sorted.columns else '一般'
-                l_icon, l_alert = get_msg_style(l_type)
-                l_date = latest['日期'].strftime('%Y-%m-%d')
-                
-                with st.container():
-                    l_alert(f"**{l_date}**：{latest['內容']}", icon=l_icon)
-                
-                if len(df_sorted) > 1:
-                    with st.expander("📜 查看近期公告 (近 5 則)"):
-                        history_msgs = df_sorted.iloc[1:6]
-                        for index, row in history_msgs.iterrows():
-                            h_type = row['類型'] if '類型' in df_sorted.columns else '一般'
-                            h_icon, h_alert = get_msg_style(h_type)
-                            h_date = row['日期'].strftime('%Y-%m-%d')
-                            h_alert(f"**{h_date}**：{row['內容']}", icon=h_icon)
-    except Exception:
+        # ★★★ 關鍵修改：直接將資料表倒序 (最下面的變第一筆) ★★★
+        # 這樣就能保證抓到的是 Excel 最底下(最新)的那一則
+        df_reversed = df_msg.iloc[::-1].reset_index(drop=True)
+        
+        if not df_reversed.empty:
+            def get_msg_style(msg_type):
+                if '慶祝' in str(msg_type): return "🎉", st.success
+                elif '提醒' in str(msg_type) or '重要' in str(msg_type): return "🔔", st.warning
+                elif '緊急' in str(msg_type): return "🚨", st.error
+                else: return "📢", st.info
+
+            # 1. 顯示最新的一則 (現在是 index 0)
+            latest = df_reversed.iloc[0]
+            l_type = latest['類型'] if '類型' in df_reversed.columns else '一般'
+            l_icon, l_alert = get_msg_style(l_type)
+            
+            # 處理日期顯示，如果是 NaT (格式錯誤) 就顯示空字串
+            l_date_str = latest['日期'].strftime('%Y-%m-%d') if pd.notna(latest['日期']) else ""
+            
+            with st.container():
+                l_alert(f"**{l_date_str}**：{latest['內容']}", icon=l_icon)
+            
+            # 2. 顯示歷史公告 (Index 1 到 4，即最新的前 2~5 則)
+            if len(df_reversed) > 1:
+                with st.expander("📜 查看近期公告 (近 5 則)"):
+                    history_msgs = df_reversed.iloc[1:6] # 取第 2 筆到第 6 筆
+                    for index, row in history_msgs.iterrows():
+                        h_type = row['類型'] if '類型' in df_reversed.columns else '一般'
+                        h_icon, h_alert = get_msg_style(h_type)
+                        h_date_str = row['日期'].strftime('%Y-%m-%d') if pd.notna(row['日期']) else ""
+                        h_alert(f"**{h_date_str}**：{row['內容']}", icon=h_icon)
+    except Exception as e:
+        # st.error(f"公告載入錯誤: {e}") # 除錯用，正式版可隱藏
         pass 
 
 # --- B. 儀表板與持股清單 ---
@@ -198,7 +206,7 @@ if df_dash is not None and not df_dash.empty:
                 else:
                     st.error("無法讀取交易表。")
         else:
-            st.caption("👆 點擊可查看各股明細")
+            st.caption("👆 點擊可查看明細")
 
         if st.button('🔄 立即更新'):
             st.cache_data.clear()
@@ -211,108 +219,126 @@ else:
 
 
 # ==========================================
-# 4. 管理員專區 (移到底部)
+# 4. 管理員專區 (雙重驗證版)
 # ==========================================
 st.markdown("---") 
 st.markdown("### ⚙️ 後台管理")
 
 with st.expander("🔧 點擊開啟管理面板", expanded=False):
-    tab1, tab2, tab3 = st.tabs(["📢 發布公告", "💸 資金入帳", "📝 新增交易"])
+    # --- 檢查是否已經登入管理員 ---
+    if not st.session_state.get('admin_logged_in', False):
+        st.warning("⚠️ 此區域僅限管理員操作")
+        admin_input = st.text_input("🔑 請輸入管理員密碼", type="password", key="admin_pass_input")
+        
+        if admin_input:
+            try:
+                if admin_input == st.secrets["admin_password"]:
+                    st.session_state['admin_logged_in'] = True
+                    st.success("身分驗證成功！")
+                    st.rerun() 
+                else:
+                    st.error("密碼錯誤，請勿嘗試入侵 🚔")
+            except KeyError:
+                st.error("Secrets 未設定 admin_password")
+    else:
+        st.success("🔓 管理員模式已啟用")
+        if st.button("🔒 登出管理員"):
+            st.session_state['admin_logged_in'] = False
+            st.rerun()
 
-    # === Tab 1: 發公告 ===
-    with tab1:
-        with st.form("msg_form"):
-            col1, col2 = st.columns([1, 3])
-            with col1:
-                new_type = st.selectbox("類型", ["🎉 慶祝", "🔔 提醒", "📢 一般", "🚨 緊急"])
-            with col2:
-                new_content = st.text_input("公告內容", placeholder="例如：資產突破 50 萬啦！")
-            
-            if st.form_submit_button("送出公告"):
-                if new_content:
+        tab1, tab2, tab3 = st.tabs(["📢 發布公告", "💸 資金入帳", "📝 新增交易"])
+
+        # === Tab 1: 發公告 ===
+        with tab1:
+            with st.form("msg_form"):
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    new_type = st.selectbox("類型", ["🎉 慶祝", "🔔 提醒", "📢 一般", "🚨 緊急"])
+                with col2:
+                    new_content = st.text_input("公告內容", placeholder="例如：資產突破 50 萬啦！")
+                
+                if st.form_submit_button("送出公告"):
+                    if new_content:
+                        try:
+                            post_data = {
+                                "action": "msg",
+                                "date": datetime.now().strftime("%Y-%m-%d"),
+                                "type": new_type,
+                                "content": new_content
+                            }
+                            requests.post(GAS_URL, json=post_data)
+                            st.success("✅ 公告已發布！")
+                            st.cache_data.clear()
+                        except Exception as e:
+                            st.error(f"錯誤：{e}")
+
+        # === Tab 2: 資金入帳 ===
+        with tab2:
+            with st.form("fund_form"):
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    f_date = st.date_input("入帳日期", datetime.now()) 
+                with col2:
+                    f_name = st.selectbox("誰轉錢進來？", ["建蒼", "奕州"]) 
+                with col3:
+                    f_amount = st.number_input("金額", min_value=0, step=1000, value=10000)
+                
+                f_note = st.text_input("備註", placeholder="例如：加碼金")
+
+                if st.form_submit_button("💰 確認入帳"):
                     try:
                         post_data = {
-                            "action": "msg",
-                            "date": datetime.now().strftime("%Y-%m-%d"),
-                            "type": new_type,
-                            "content": new_content
+                            "action": "fund", 
+                            "date": f_date.strftime("%Y-%m-%d"), 
+                            "name": f_name,
+                            "amount": f_amount,
+                            "note": f_note
                         }
-                        requests.post(GAS_URL, json=post_data)
-                        st.success("✅ 公告已發布！")
-                        st.cache_data.clear()
+                        response = requests.post(GAS_URL, json=post_data)
+                        
+                        if response.status_code == 200:
+                            result = response.json()
+                            if result.get("status") == "success":
+                                st.success(f"✅ 成功！已將款項填入 {f_date.month} 月的格子中。")
+                            else:
+                                st.error(f"❌ 寫入失敗：{result.get('message')}")
+                        else:
+                            st.error("❌ 連線錯誤")
                     except Exception as e:
                         st.error(f"錯誤：{e}")
 
-    # === Tab 2: 資金入帳 ===
-    with tab2:
-        with st.form("fund_form"):
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                f_date = st.date_input("轉帳日期", datetime.now()) 
-            with col2:
-                f_name = st.selectbox("誰轉錢進來？", ["建蒼🐯", "奕州🐔"]) 
-            with col3:
-                f_amount = st.number_input("金額", min_value=0, step=1000, value=10000)
-            
-            f_note = st.text_input("備註", placeholder="例如：加碼金")
-
-            if st.form_submit_button("💰 確認入帳"):
-                try:
-                    post_data = {
-                        "action": "fund", 
-                        "date": f_date.strftime("%Y-%m-%d"), 
-                        "name": f_name,
-                        "amount": f_amount,
-                        "note": f_note
-                    }
-                    response = requests.post(GAS_URL, json=post_data)
-                    
-                    if response.status_code == 200:
-                        result = response.json()
-                        if result.get("status") == "success":
-                            st.success(f"✅ 成功！已將款項填入 {f_date.month} 月的格子中。")
-                        else:
-                            st.error(f"❌ 寫入失敗：{result.get('message')}")
-                    else:
-                        st.error("❌ 連線錯誤")
-                except Exception as e:
-                    st.error(f"錯誤：{e}")
-
-    # === Tab 3: 新增交易 (極簡版：移除總金額顯示) ===
-    with tab3:
-        with st.form("trade_form"):
-            col1, col2 = st.columns(2)
-            with col1:
-                t_date = st.date_input("交易日期", datetime.now())
-                t_stock = st.selectbox("股票代號", ["0050", "006208", "00919", "00878", "2330"])
-                t_type = st.selectbox("交易類別", ["買入", "賣出"])
-                is_regular = st.checkbox("是定期定額嗎？", value=True)
-            with col2:
-                t_price = st.number_input("成交單價", min_value=0.0, step=0.1, format="%.2f")
-                t_shares = st.number_input("成交股數", min_value=0, step=100)
-                t_fee = st.number_input("手續費", min_value=0, value=20)
-            
-            # 這裡不顯示任何總金額文字
-            
-            if st.form_submit_button("📝 記錄交易"):
-                try:
-                    # 在送出時默默計算
-                    t_total_final = int(t_price * t_shares)
-                    
-                    post_data = {
-                        "action": "trade",
-                        "date": t_date.strftime("%Y-%m-%d"),
-                        "stock": t_stock,
-                        "type": t_type,
-                        "price": t_price,
-                        "total": t_total_final, # 傳送計算結果
-                        "shares": t_shares,
-                        "fee": t_fee,
-                        "regular": "Y" if is_regular else ""
-                    }
-                    requests.post(GAS_URL, json=post_data)
-                    st.success(f"✅ 已記錄：{t_type} {t_stock} {t_shares} 股，金額 { t_total_final} 元!")
-                    st.cache_data.clear()
-                except Exception as e:
-                    st.error(f"錯誤：{e}")
-
+        # === Tab 3: 新增交易 (無手續費計算版) ===
+        with tab3:
+            with st.form("trade_form"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    t_date = st.date_input("交易日期", datetime.now())
+                    t_stock = st.selectbox("股票代號", ["0050", "006208", "00919", "00878", "2330"])
+                    t_type = st.selectbox("交易類別", ["買入", "賣出"])
+                    is_regular = st.checkbox("是定期定額嗎？", value=True)
+                with col2:
+                    t_price = st.number_input("成交單價", min_value=0.0, step=0.1, format="%.2f")
+                    t_shares = st.number_input("成交股數", min_value=0, step=100)
+                    t_fee = st.number_input("手續費 (僅紀錄)", min_value=0, value=20)
+                
+                if st.form_submit_button("📝 記錄交易"):
+                    try:
+                        # 總金額只算 (單價 x 股數)
+                        t_total_final = int(t_price * t_shares)
+                        
+                        post_data = {
+                            "action": "trade",
+                            "date": t_date.strftime("%Y-%m-%d"),
+                            "stock": t_stock,
+                            "type": t_type,
+                            "price": t_price,
+                            "total": t_total_final, 
+                            "shares": t_shares,
+                            "fee": t_fee,          
+                            "regular": "Y" if is_regular else ""
+                        }
+                        requests.post(GAS_URL, json=post_data)
+                        st.success(f"✅ 已記錄：{t_type} {t_stock} {t_shares} 股！(投入 ${t_total_final:,}，手續費另計)")
+                        st.cache_data.clear()
+                    except Exception as e:
+                        st.error(f"錯誤：{e}")
