@@ -15,8 +15,8 @@ def check_password():
 
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.markdown("## 🔒 歡迎踏入\n## 雞虎大殿堂 🐔🐯") 
-        password_input = st.text_input("請輸入神秘數字", type="password")
+        st.markdown("##  歡迎踏入\n## 雞虎大殿堂 🐔🐯") 
+        password_input = st.text_input("🔒請輸入神秘數字", type="password")
 
         if password_input:
             try:
@@ -25,7 +25,7 @@ def check_password():
                     st.session_state['password_correct'] = True
                     st.rerun()
                 else:
-                    st.error("密碼錯誤 ❌")
+                    st.error("❌輸入錯誤，罰你給我一杯五十嵐。")
             except KeyError:
                 st.error("系統錯誤：未設定密碼 (請檢查 Secrets)")
                 return False
@@ -198,7 +198,7 @@ if df_dash is not None and not df_dash.empty:
                 else:
                     st.error("無法讀取交易表。")
         else:
-            st.caption("👆 (手機請左滑) 點擊框框可查看明細")
+            st.caption("👆 點擊可查看各股明細")
 
         if st.button('🔄 立即更新'):
             st.cache_data.clear()
@@ -248,9 +248,9 @@ with st.expander("🔧 點擊開啟管理面板", expanded=False):
         with st.form("fund_form"):
             col1, col2, col3 = st.columns(3)
             with col1:
-                f_date = st.date_input("入帳日期", datetime.now()) 
+                f_date = st.date_input("轉帳日期", datetime.now()) 
             with col2:
-                f_name = st.selectbox("誰轉錢進來？", ["建蒼", "奕州"]) 
+                f_name = st.selectbox("誰轉錢進來？", ["建蒼🐯", "奕州🐔"]) 
             with col3:
                 f_amount = st.number_input("金額", min_value=0, step=1000, value=10000)
             
@@ -297,7 +297,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=False):
             if st.form_submit_button("📝 記錄交易"):
                 try:
                     # 在送出時默默計算
-                    t_total_final = int(t_price * t_shares + t_fee)
+                    t_total_final = int(t_price * t_shares)
                     
                     post_data = {
                         "action": "trade",
@@ -311,7 +311,8 @@ with st.expander("🔧 點擊開啟管理面板", expanded=False):
                         "regular": "Y" if is_regular else ""
                     }
                     requests.post(GAS_URL, json=post_data)
-                    st.success(f"✅ 已記錄：{t_type} {t_stock} {t_shares} 股！")
+                    st.success(f"✅ 已記錄：{t_type} {t_stock} {t_shares} 股，金額 { t_total_final} 元!")
                     st.cache_data.clear()
                 except Exception as e:
                     st.error(f"錯誤：{e}")
+
