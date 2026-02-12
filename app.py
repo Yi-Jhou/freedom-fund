@@ -15,8 +15,8 @@ def check_password():
 
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.markdown("## 歡迎踏入\n## 🐔🐯大殿堂")
-        password_input = st.text_input("🔒 請輸入神秘數字", type="password")
+        st.markdown("## 🔒 歡迎踏入\n## 雞虎大殿堂 🐔🐯")
+        password_input = st.text_input("請輸入神秘數字", type="password")
 
         if password_input:
             try:
@@ -43,8 +43,10 @@ try:
     MSG_URL = st.secrets["msg_sheet_url"]
     ACT_URL = st.secrets["act_sheet_url"]
     GAS_URL = st.secrets["gas_url"]
-except (FileNotFoundError, KeyError):
-    st.error("🔒 錯誤：找不到 Secrets 設定！請檢查 Streamlit Cloud 後台。")
+    # ★ 新增：股票清單 CSV 連結
+    STOCK_MAP_URL = st.secrets["stock_map_url"] 
+except (FileNotFoundError, KeyError) as e:
+    st.error(f"🔒 錯誤：找不到 Secrets 設定！請檢查 Streamlit Cloud 後台。\n缺少項目: {e}")
     st.stop()
 
 # ==========================================
@@ -57,6 +59,24 @@ def load_data(url):
         return df
     except Exception as e:
         return None
+
+@st.cache_data(ttl=60)
+def load_stock_map():
+    """讀取 Google Sheet 的股票清單，轉成字典 {'0050': '元大台灣50'}"""
+    try:
+        df = pd.read_csv(STOCK_MAP_URL, dtype=str)
+        # 確保有這兩欄，並轉成字典
+        if '股票代號' in df.columns and '股票名稱' in df.columns:
+            # 去除空白
+            df['股票代號'] = df['股票代號'].str.strip()
+            df['股票名稱'] = df['股票名稱'].str.strip()
+            return dict(zip(df['股票代號'], df['股票名稱']))
+        return {}
+    except:
+        return {}
+
+# 載入股票對照表 (全域變數)
+stock_map_dict = load_stock_map()
 
 def clean_stock_code(series):
     return (series.astype(str).str.replace(r'\.0$', '', regex=True).str.strip().str.zfill(4))
@@ -141,9 +161,9 @@ if df_dash is not None and not df_dash.empty:
         st.divider()
 
         # ==========================================
-        # C. ⚡ 最新動態流水帳 (移到持股清單上方)
+        # C. ⚡ 最新動態流水帳 (近 30 天)
         # ==========================================
-        st.subheader("⚡最新動態 (近 30 天)")
+        st.subheader("⚡ 最新動態 (近 30 天)")
 
         df_act = load_data(ACT_URL)
 
@@ -165,7 +185,7 @@ if df_dash is not None and not df_dash.empty:
                             # Emoji 邏輯
                             icon = "🔹" 
                             row_type = str(row['類型']) if '類型' in df_act.columns else ""
-                            content = str(row['內容']) # 先把內容抓出來
+                            content = str(row['內容'])
                             
                             if "入金" in row_type:
                                 icon = "💰"
@@ -174,7 +194,6 @@ if df_dash is not None and not df_dash.empty:
                             
                             # --- 視覺優化：如果是定期定額，讓它變顯眼！ ---
                             if "(定期定額)" in content:
-                                # 把文字替換成粗體，甚至可以加個紅點強調
                                 content = content.replace("(定期定額)", "🔴 **(定期定額)**")
                             
                             # 3. 日期格式加上年份
@@ -189,13 +208,26 @@ if df_dash is not None and not df_dash.empty:
         else:
             st.caption("尚無動態資料")
             
-        st.divider() # 加個分隔線
+        st.divider()
 
         # ==========================================
-        # D. 持股清單
+        # D. 持股清單 (整合股票名稱翻譯)
         # ==========================================
         st.subheader("📋 持股清單")
+        
+        # 1. 準備資料
         display_df = df_stocks[["股票代號", "目前市值", "帳面損益", "總投入本金", "目前股價", "累積總股數"]].copy()
+
+        # 2. ★ 翻譯代號：用 map 來轉換代號為名稱 ★
+        #    如果找不到對照，就維持原本的代號 (fillna)
+        display_df["顯示名稱"] = display_df["股票代號"].map(stock_map_dict).fillna("")
+        
+        # 3. 把代號跟名稱組起來： "0050" + " (" + "元大台灣50" + ")"
+        #    如果沒有名稱，就只顯示代號
+        display_df["股票代號"] = display_df.apply(
+            lambda x: f"{x['股票代號']} ({x['顯示名稱']})" if x['顯示名稱'] else x['股票代號'], 
+            axis=1
+        )
 
         def style_row_by_profit(row):
             profit = row['帳面損益']
@@ -226,20 +258,31 @@ if df_dash is not None and not df_dash.empty:
             selection_mode="single-row"
         )
 
+        # --- 詳細交易紀錄 (整合翻譯還原) ---
         if len(event.selection.rows) > 0:
             selected_index = event.selection.rows[0]
-            selected_stock_code = display_df.iloc[selected_index]["股票代號"]
+            # 這裡抓到的會是 "0050 (元大台灣50)"
+            selected_display_name = display_df.iloc[selected_index]["股票代號"]
+            
+            # ★ 切割字串，還原成 "0050" 去查表 ★
+            selected_stock_code = selected_display_name.split(" ")[0]
             
             with st.container(border=True):
-                st.info(f"👇 **{selected_stock_code}** 詳細交易紀錄")
+                st.info(f"👇 **{selected_display_name}** 詳細交易紀錄")
+                
                 if df_trans is not None and not df_trans.empty:
                     df_trans.columns = df_trans.columns.str.strip()
                     if "股票代號" in df_trans.columns:
                         df_trans["股票代號"] = clean_stock_code(df_trans["股票代號"])
+                        
+                        # 用純代號過濾資料
                         my_trans = df_trans[df_trans["股票代號"] == selected_stock_code].copy()
+                        
                         if "投入金額" in my_trans.columns:
                              my_trans = my_trans[my_trans["投入金額"].apply(clean_number) > 0]
+                        
                         if not my_trans.empty:
+                            # 這裡選擇不翻譯明細裡的代號，保持簡潔，因為標題已經有了
                             cols_to_show = ["日期", "交易類別", "成交單價", "投入金額", "成交股數"]
                             final_cols = [c for c in cols_to_show if c in my_trans.columns]
                             st.dataframe(my_trans[final_cols], use_container_width=True, hide_index=True)
@@ -250,7 +293,7 @@ if df_dash is not None and not df_dash.empty:
                 else:
                     st.error("無法讀取交易表。")
         else:
-            st.caption("👆點擊可查看明細")
+            st.caption("👆 (手機請左滑) 點擊框框可查看明細")
 
         if st.button('🔄 立即更新'):
             st.cache_data.clear()
@@ -263,12 +306,11 @@ else:
 
 
 # ==========================================
-# 4. 管理員專區 (保持在最下方)
+# 4. 管理員專區
 # ==========================================
 st.markdown("---") 
 st.markdown("### ⚙️ 後台管理")
 
-# 判斷面板是否要保持開啟 (預設關閉)
 if 'admin_expanded' not in st.session_state:
     st.session_state['admin_expanded'] = False
 
@@ -283,7 +325,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
             try:
                 if admin_input == st.secrets["admin_password"]:
                     st.session_state['admin_logged_in'] = True
-                    st.session_state['admin_expanded'] = True # 登入成功後自動展開
+                    st.session_state['admin_expanded'] = True 
                     st.success("身分驗證成功！")
                     st.rerun() 
                 else:
@@ -297,7 +339,8 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
             st.session_state['admin_expanded'] = False
             st.rerun()
 
-        tab1, tab2, tab3 = st.tabs(["📢 發布公告", "💸 資金入帳", "📝 新增交易"])
+        # 改成 4 個分頁
+        tab1, tab2, tab3, tab4 = st.tabs(["📢 發布公告", "💸 資金入帳", "📝 新增交易", "🏷️ 管理股票"])
 
         # === Tab 1: 發公告 ===
         with tab1:
@@ -318,7 +361,6 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                                 "content": new_content
                             }
                             requests.post(GAS_URL, json=post_data)
-                            
                             st.toast("✅ 公告已發布！", icon='🎉')
                             st.session_state['admin_expanded'] = True
                             st.cache_data.clear()
@@ -348,7 +390,6 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                             "note": f_note
                         }
                         response = requests.post(GAS_URL, json=post_data)
-                        
                         if response.status_code == 200:
                             result = response.json()
                             if result.get("status") == "success":
@@ -361,21 +402,30 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     except Exception as e:
                         st.error(f"錯誤：{e}")
 
-        # === Tab 3: 新增交易 (整合：定期定額格式 + 股票彈性輸入) ===
+        # === Tab 3: 新增交易 (使用動態股票清單) ===
         with tab3:
             with st.form("trade_form"):
                 col1, col2 = st.columns(2)
                 with col1:
                     t_date = st.date_input("交易日期", datetime.now())
                     
-                    # --- 股票代號：選單 + 彈性輸入 ---
-                    fav_stocks = ["0050", "00919", "006208" ]
-                    selected_option = st.selectbox("股票代號", fav_stocks + ["🖊️ 自行輸入"])
+                    # --- 股票代號：從 stock_map_dict 產生選單 ---
+                    if stock_map_dict:
+                        # 產生 "0050 (元大台灣50)" 這樣的選項
+                        fav_options = [f"{k} ({v})" for k, v in stock_map_dict.items()]
+                        # 排序一下
+                        fav_options.sort()
+                    else:
+                        fav_options = ["0050", "006208", "00919", "2330"] # 預設備用
+
+                    selected_option = st.selectbox("股票代號", fav_options + ["🖊️ 自行輸入"])
                     
                     if selected_option == "🖊️ 自行輸入":
-                        t_stock = st.text_input("請輸入代號", placeholder="例如：2412").strip()
+                        t_stock_input = st.text_input("請輸入代號", placeholder="例如：2412").strip()
+                        t_stock = t_stock_input 
                     else:
-                        t_stock = selected_option
+                        # 切開字串，只取前面的代號 "0050"
+                        t_stock = selected_option.split(" ")[0]
                     
                     t_type = st.selectbox("交易類別", ["買入", "賣出"])
                     is_regular = st.checkbox("是定期定額嗎？", value=True)
@@ -387,14 +437,12 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                 
                 if st.form_submit_button("📝 記錄交易"):
                     try:
-                        # 計算總價
                         t_total_final = int(t_price * t_shares)
                         
-                        # 1. 準備資料
                         post_data = {
                             "action": "trade",
                             "date": t_date.strftime("%Y-%m-%d"),
-                            "stock": t_stock, # 這裡會吃到上面判斷後的最終代號
+                            "stock": t_stock,
                             "type": t_type,
                             "price": t_price,
                             "total": t_total_final, 
@@ -403,22 +451,74 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                             "regular": "Y" if is_regular else ""
                         }
                         
-                        # 2. 送出資料
                         requests.post(GAS_URL, json=post_data)
                         
-                        # 3. 顯示成功訊息 (使用你的定期定額專屬格式)
                         if is_regular and t_type == "買入":
                             msg = f"(定期定額) 買入 {t_stock} {t_shares}股 @ {t_price} ，總共 {t_total_final} 元"
                             st.toast(f"✅ {msg}", icon='📝')
                         else:
                             st.toast(f"✅ 已記錄：{t_type} {t_stock} {t_shares} 股 (總額 ${t_total_final:,})", icon='📝')
                         
-                        # 保持面板開啟 & 清除快取
                         st.session_state['admin_expanded'] = True
                         st.cache_data.clear()
 
                     except Exception as e:
                         st.error(f"錯誤：{e}")
 
+        # === Tab 4: 管理股票 (新增功能) ===
+        with tab4:
+            st.info("💡 這裡設定的名稱，會自動套用到整個網站 (持股清單、交易明細)。")
+            
+            # --- 1. 新增/編輯區 ---
+            with st.form("stock_map_form"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    m_code = st.text_input("股票代號", placeholder="例如：0050").strip()
+                with col2:
+                    m_name = st.text_input("股票名稱", placeholder="例如：元大台灣50").strip()
+                
+                if st.form_submit_button("💾 儲存 / 更新"):
+                    if m_code and m_name:
+                        try:
+                            post_data = {
+                                "action": "update_stock", 
+                                "stock": m_code,
+                                "name": m_name
+                            }
+                            requests.post(GAS_URL, json=post_data)
+                            
+                            st.toast(f"✅ 已更新：{m_code} ➝ {m_name}", icon='🏷️')
+                            st.cache_data.clear()
+                            st.session_state['admin_expanded'] = True
+                            st.rerun()
+                            
+                        except Exception as e:
+                            st.error(f"錯誤：{e}")
+                    else:
+                        st.warning("⚠️ 代號和名稱都要填寫才能儲存喔！")
 
+            st.divider()
 
+            # --- 2. 目前清單顯示區 ---
+            st.subheader("📋 目前已設定的股票")
+            
+            if stock_map_dict:
+                # 轉成 DataFrame 表格顯示
+                df_map = pd.DataFrame(list(stock_map_dict.items()), columns=['股票代號', '股票名稱'])
+                df_map = df_map.sort_values(by='股票代號')
+                
+                st.dataframe(
+                    df_map, 
+                    use_container_width=True, 
+                    hide_index=True,
+                    column_config={
+                        "股票代號": st.column_config.TextColumn("代號", width="small"),
+                        "股票名稱": st.column_config.TextColumn("顯示名稱", width="medium"),
+                    }
+                )
+            else:
+                st.info("尚無資料，請在上方新增股票。")
+            
+            if st.button("🔄 重新讀取清單"):
+                st.cache_data.clear()
+                st.rerun()
