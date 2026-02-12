@@ -15,8 +15,8 @@ def check_password():
 
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.markdown("## 歡迎踏入\n## 🐔🐯大殿堂 ")
-        password_input = st.text_input("🔒 請輸入神秘數字", type="password")
+        st.markdown("## 🔒 歡迎踏入\n## 🐔🐯大殿堂 ")
+        password_input = st.text_input("請輸入神秘數字", type="password")
 
         if password_input:
             try:
@@ -43,7 +43,9 @@ try:
     MSG_URL = st.secrets["msg_sheet_url"]
     ACT_URL = st.secrets["act_sheet_url"]
     GAS_URL = st.secrets["gas_url"]
-    STOCK_MAP_URL = st.secrets["stock_map_url"] 
+    STOCK_MAP_URL = st.secrets["stock_map_url"]
+    # ★ 讀取股利表連結
+    DIV_URL = st.secrets["div_sheet_url"]
 except (FileNotFoundError, KeyError) as e:
     st.error(f"🔒 錯誤：找不到 Secrets 設定！請檢查 Streamlit Cloud 後台。\n缺少項目: {e}")
     st.stop()
@@ -72,7 +74,7 @@ def load_stock_map():
     except:
         return {}
 
-# 載入股票對照表 (全域變數)
+# 載入股票對照表
 stock_map_dict = load_stock_map()
 
 def clean_stock_code(series):
@@ -85,21 +87,20 @@ def clean_number(x):
 # ==========================================
 # 3. 網頁主程式
 # ==========================================
-# st.title("💰 存股儀表板")  <-- 這一行刪掉，換成下面這樣：
 
-col_title, col_btn = st.columns([5, 1], gap="small") # 比例 5:1
+# --- 標題區塊 (按鈕貼在標題後面) ---
+col_title, col_btn = st.columns([5, 1], gap="small")
 
 with col_title:
     st.title("💰 存股儀表板")
 
 with col_btn:
-    # 這裡加個空白，讓按鈕在垂直方向對齊標題文字
     st.markdown('<div style="margin-top: 20px;"></div>', unsafe_allow_html=True)
     if st.button('🔄 更新', help="強制重新讀取 Google Sheet"):
         st.cache_data.clear()
         st.rerun()
-        
-# --- A. 智慧公告欄 (倒序顯示最新) ---
+
+# --- A. 智慧公告欄 ---
 df_msg = load_data(MSG_URL)
 
 if df_msg is not None and not df_msg.empty:
@@ -108,7 +109,6 @@ if df_msg is not None and not df_msg.empty:
         if '日期' in df_msg.columns:
             df_msg['日期'] = pd.to_datetime(df_msg['日期'], errors='coerce')
 
-        # 倒序：最新的在最上面
         df_reversed = df_msg.iloc[::-1].reset_index(drop=True)
         
         if not df_reversed.empty:
@@ -140,6 +140,7 @@ if df_msg is not None and not df_msg.empty:
 # --- B. 儀表板核心數據 ---
 df_dash = load_data(DASHBOARD_URL)
 df_trans = load_data(TRANS_URL)
+df_div = load_data(DIV_URL) # ★ 這裡先載入股利表，下面才能用
 
 if df_dash is not None and not df_dash.empty:
     try:
@@ -172,7 +173,7 @@ if df_dash is not None and not df_dash.empty:
         # ==========================================
         # C. ⚡ 最新動態 (近 30 天)
         # ==========================================
-        st.subheader("⚡最新動態 ")
+        st.subheader("⚡最新動態")
 
         df_act = load_data(ACT_URL)
 
@@ -192,17 +193,12 @@ if df_dash is not None and not df_dash.empty:
                             row_type = str(row['類型']) if '類型' in df_act.columns else ""
                             content = str(row['內容'])
                             
-                            if "入金" in row_type:
-                                icon = "💰"
-                            elif "交易" in row_type:
-                                icon = "⚖️"
-                            elif "股利" in row_type:
-                                icon = "💸"
+                            if "入金" in row_type: icon = "💰"
+                            elif "交易" in row_type: icon = "⚖️"
+                            elif "股利" in row_type: icon = "💸"
                             
-                            # --- 視覺優化 ---
                             if "(定期定額)" in content:
                                 content = content.replace("(定期定額)", "🔴 **(定期定額)**")
-                            
                             if "(股息再投入)" in content:
                                 content = content.replace("(股息再投入)", "♻️ **(股息再投入)**")
                             
@@ -210,7 +206,6 @@ if df_dash is not None and not df_dash.empty:
                             st.markdown(f"{icon} **{date_str}** | {content}")
                     else:
                         st.caption("近一個月無動態")
-                        
             except Exception as e:
                 st.caption("尚無動態")
         else:
@@ -226,7 +221,6 @@ if df_dash is not None and not df_dash.empty:
         display_df = df_stocks[["股票代號", "目前市值", "帳面損益", "總投入本金", "目前股價", "累積總股數"]].copy()
 
         display_df["顯示名稱"] = display_df["股票代號"].map(stock_map_dict).fillna("")
-        
         display_df["股票代號"] = display_df.apply(
             lambda x: f"{x['股票代號']} ({x['顯示名稱']})" if x['顯示名稱'] else x['股票代號'], 
             axis=1
@@ -247,21 +241,15 @@ if df_dash is not None and not df_dash.empty:
         event = st.dataframe(
             display_df.style
             .format({
-                "總投入本金": "{:,.0f}",
-                "目前市值": "{:,.0f}",
-                "帳面損益": "{:,.0f}", 
-                "平均成本": "{:.2f}",
-                "目前股價": "{:.2f}",
-                "累積總股數": "{:,.0f}"
+                "總投入本金": "{:,.0f}", "目前市值": "{:,.0f}", "帳面損益": "{:,.0f}", 
+                "平均成本": "{:.2f}", "目前股價": "{:.2f}", "累積總股數": "{:,.0f}"
             })
             .apply(style_row_by_profit, axis=1)
             .bar(subset=['帳面損益'], align='mid', color=['#90EE90', '#FFB6C1']),
-            use_container_width=True,
-            hide_index=True,
-            on_select="rerun",
-            selection_mode="single-row"
+            use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row"
         )
 
+        # --- 點擊後的詳細明細 ---
         if len(event.selection.rows) > 0:
             selected_index = event.selection.rows[0]
             selected_display_name = display_df.iloc[selected_index]["股票代號"]
@@ -270,18 +258,16 @@ if df_dash is not None and not df_dash.empty:
             with st.container(border=True):
                 st.info(f"👇 **{selected_display_name}** 詳細交易紀錄")
                 
+                # 1. 交易紀錄
                 if df_trans is not None and not df_trans.empty:
                     df_trans.columns = df_trans.columns.str.strip()
                     if "股票代號" in df_trans.columns:
                         df_trans["股票代號"] = clean_stock_code(df_trans["股票代號"])
-                        
                         my_trans = df_trans[df_trans["股票代號"] == selected_stock_code].copy()
-                        
                         if "投入金額" in my_trans.columns:
                              my_trans = my_trans[my_trans["投入金額"].apply(clean_number) > 0]
-                        
                         if not my_trans.empty:
-                            cols_to_show = ["日期", "交易類別", "成交單價", "投入金額", "成交股數"]
+                            cols_to_show = ["日期", "交易類別", "成交單價", "投入金額", "成交股數", "股息再投入"]
                             final_cols = [c for c in cols_to_show if c in my_trans.columns]
                             st.dataframe(my_trans[final_cols], use_container_width=True, hide_index=True)
                         else:
@@ -291,6 +277,39 @@ if df_dash is not None and not df_dash.empty:
                 else:
                     st.error("無法讀取交易表。")
 
+                # 2. ★ 新增：個股股利紀錄 ★
+                if df_div is not None and not df_div.empty:
+                    # 使用 copy 清理，不影響原始資料
+                    df_div_local = df_div.copy()
+                    df_div_local.columns = df_div_local.columns.str.strip()
+                    if "股票代號" in df_div_local.columns:
+                        df_div_local["股票代號"] = clean_stock_code(df_div_local["股票代號"])
+                        
+                        # 篩選出這支股票的股利
+                        my_div = df_div_local[df_div_local["股票代號"] == selected_stock_code].copy()
+                        
+                        if not my_div.empty:
+                            st.markdown("---") # 分隔線
+                            st.markdown(f"#### 💸 {selected_display_name} 歷史配息")
+                            st.info("💡 股利金額參考用，金額可能已投入股票或其他用途。")
+                            
+                            # 選擇顯示欄位
+                            cols_div = ["發放日期", "季", "配息單價", "實領金額"]
+                            final_div_cols = [c for c in cols_div if c in my_div.columns]
+                            
+                            # 依日期排序 (新的在上面)
+                            if "發放日期" in my_div.columns:
+                                my_div = my_div.sort_values(by="發放日期", ascending=False)
+                            
+                            st.dataframe(
+                                my_div[final_div_cols],
+                                use_container_width=True,
+                                hide_index=True,
+                                column_config={
+                                    "配息單價": st.column_config.NumberColumn("配息單價", format="$%.2f"),
+                                    "實領金額": st.column_config.NumberColumn("實領金額", format="$%d")
+                                }
+                            )
 
     except Exception as e:
         st.error(f"程式錯誤：{e}")
@@ -331,7 +350,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
             st.session_state['admin_expanded'] = False
             st.rerun()
 
-        # ★ 修改順序：1.公告 2.管理股票 3.資金 4.交易 5.股利
+        # 順序：1.公告 2.管理股票 3.資金 4.交易 5.股利
         tab1, tab2, tab3, tab4, tab5 = st.tabs(["📢 發布公告", "🏷️ 管理股票", "💸 資金入帳", "📝 新增交易", "💰 新增股利"])
 
         # === Tab 1: 發公告 ===
@@ -359,10 +378,9 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                         except Exception as e:
                             st.error(f"錯誤：{e}")
 
-        # === Tab 2: 管理股票 (原 Tab 4) ===
+        # === Tab 2: 管理股票 ===
         with tab2:
             st.info("💡 這裡設定的名稱，會自動套用到整個網站 (持股清單、交易明細)。")
-            
             with st.form("stock_map_form"):
                 col1, col2 = st.columns(2)
                 with col1:
@@ -373,47 +391,29 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                 if st.form_submit_button("💾 儲存 / 更新"):
                     if m_code and m_name:
                         try:
-                            post_data = {
-                                "action": "update_stock", 
-                                "stock": m_code,
-                                "name": m_name
-                            }
+                            post_data = {"action": "update_stock", "stock": m_code, "name": m_name}
                             requests.post(GAS_URL, json=post_data)
-                            
                             st.toast(f"✅ 已更新：{m_code} ➝ {m_name}", icon='🏷️')
                             st.cache_data.clear()
                             st.session_state['admin_expanded'] = True
                             st.rerun()
-                            
                         except Exception as e:
                             st.error(f"錯誤：{e}")
                     else:
                         st.warning("⚠️ 代號和名稱都要填寫才能儲存喔！")
-
             st.divider()
             st.subheader("📋 目前已設定的股票")
-            
             if stock_map_dict:
                 df_map = pd.DataFrame(list(stock_map_dict.items()), columns=['股票代號', '股票名稱'])
                 df_map = df_map.sort_values(by='股票代號')
-                
-                st.dataframe(
-                    df_map, 
-                    use_container_width=True, 
-                    hide_index=True,
-                    column_config={
-                        "股票代號": st.column_config.TextColumn("代號", width="small"),
-                        "股票名稱": st.column_config.TextColumn("顯示名稱", width="medium"),
-                    }
-                )
+                st.dataframe(df_map, use_container_width=True, hide_index=True, column_config={"股票代號": st.column_config.TextColumn("代號", width="small"), "股票名稱": st.column_config.TextColumn("顯示名稱", width="medium")})
             else:
                 st.info("尚無資料，請在上方新增股票。")
-            
             if st.button("🔄 重新讀取清單"):
                 st.cache_data.clear()
                 st.rerun()
 
-        # === Tab 3: 資金入帳 (原 Tab 2) ===
+        # === Tab 3: 資金入帳 ===
         with tab3:
             with st.form("fund_form"):
                 col1, col2, col3 = st.columns(3)
@@ -423,60 +423,41 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     f_name = st.selectbox("誰轉錢進來？", ["建蒼", "奕州"]) 
                 with col3:
                     f_amount = st.number_input("金額", min_value=0, step=1000, value=10000)
-                
                 f_note = st.text_input("備註", placeholder="例如：加碼金")
-
                 if st.form_submit_button("💰 確認入帳"):
                     try:
-                        post_data = {
-                            "action": "fund", 
-                            "date": f_date.strftime("%Y-%m-%d"), 
-                            "name": f_name,
-                            "amount": f_amount,
-                            "note": f_note
-                        }
+                        post_data = {"action": "fund", "date": f_date.strftime("%Y-%m-%d"), "name": f_name, "amount": f_amount, "note": f_note}
                         response = requests.post(GAS_URL, json=post_data)
                         if response.status_code == 200:
-                            result = response.json()
-                            if result.get("status") == "success":
-                                st.toast(f"✅ 成功！已將款項填入 {f_date.month} 月的格子中。", icon='💸')
-                                st.session_state['admin_expanded'] = True
-                            else:
-                                st.error(f"❌ 寫入失敗：{result.get('message')}")
+                            st.toast(f"✅ 成功！已將款項填入 {f_date.month} 月的格子中。", icon='💸')
+                            st.session_state['admin_expanded'] = True
                         else:
                             st.error("❌ 連線錯誤")
                     except Exception as e:
                         st.error(f"錯誤：{e}")
 
-        # === Tab 4: 新增交易 (原 Tab 3) ===
+        # === Tab 4: 新增交易 ===
         with tab4:
             with st.form("trade_form"):
                 col1, col2 = st.columns(2)
                 with col1:
                     t_date = st.date_input("交易日期", datetime.now())
-                    
                     if stock_map_dict:
                         fav_options = [f"{k} ({v})" for k, v in stock_map_dict.items()]
                         fav_options.sort()
                     else:
                         fav_options = ["0050", "006208", "00919", "2330"] 
-
                     selected_option = st.selectbox("股票代號", fav_options + ["🖊️ 自行輸入"])
-                    
                     if selected_option == "🖊️ 自行輸入":
-                        t_stock_input = st.text_input("請輸入代號", placeholder="例如：2412").strip()
-                        t_stock = t_stock_input 
+                        t_stock = st.text_input("請輸入代號", placeholder="例如：2412").strip()
                     else:
                         t_stock = selected_option.split(" ")[0]
-                    
                     t_type = st.selectbox("交易類別", ["買入", "賣出"])
-                    
                     sub_c1, sub_c2 = st.columns(2)
                     with sub_c1:
                         is_regular = st.checkbox("是定期定額嗎？", value=True)
                     with sub_c2:
                         is_dividend = st.checkbox("是股息再投入嗎？", value=False)
-                    
                 with col2:
                     t_price = st.number_input("成交單價", min_value=0.0, step=0.1, format="%.2f")
                     t_shares = st.number_input("成交股數", min_value=0, step=100)
@@ -485,85 +466,58 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                 if st.form_submit_button("📝 記錄交易"):
                     try:
                         t_total_final = int(t_price * t_shares)
-                        
                         post_data = {
-                            "action": "trade",
-                            "date": t_date.strftime("%Y-%m-%d"),
-                            "stock": t_stock,
-                            "type": t_type,
-                            "price": t_price,
-                            "total": t_total_final, 
-                            "shares": t_shares,
-                            "fee": t_fee,          
-                            "regular": "Y" if is_regular else "",
-                            "dividend": "Y" if is_dividend else "" 
+                            "action": "trade", "date": t_date.strftime("%Y-%m-%d"),
+                            "stock": t_stock, "type": t_type, "price": t_price,
+                            "total": t_total_final, "shares": t_shares, "fee": t_fee,          
+                            "regular": "Y" if is_regular else "", "dividend": "Y" if is_dividend else "" 
                         }
-                        
                         requests.post(GAS_URL, json=post_data)
-                        
                         prefix_msg = ""
                         if is_regular: prefix_msg += "(定期定額) "
                         if is_dividend: prefix_msg += "(股息再投入) "
-                        
                         if t_type == "買入" and prefix_msg:
                             msg = f"{prefix_msg}買入 {t_stock} {t_shares}股 @ {t_price} ，總共 {t_total_final} 元"
                             st.toast(f"✅ {msg}", icon='♻️' if is_dividend else '📝')
                         else:
                             st.toast(f"✅ 已記錄：{t_type} {t_stock} {t_shares} 股 (總額 ${t_total_final:,})", icon='📝')
-                        
                         st.session_state['admin_expanded'] = True
                         st.cache_data.clear()
-
                     except Exception as e:
                         st.error(f"錯誤：{e}")
 
-        # === Tab 5: 新增股利 (使用下拉選單 Q1~Q4) ===
+        # === Tab 5: 新增股利 ===
         with tab5:
             st.caption("請依照券商的「股利發放通知書」填寫")
             with st.form("dividend_form"):
                 col1, col2 = st.columns(2)
                 with col1:
                     d_date = st.date_input("發放日期", datetime.now())
-                    
                     if stock_map_dict:
                         fav_options = [f"{k} ({v})" for k, v in stock_map_dict.items()]
                         fav_options.sort()
                     else:
                         fav_options = ["0050", "006208", "00919", "2330"] 
-
                     d_option = st.selectbox("股票代號", fav_options + ["🖊️ 自行輸入"], key="div_stock")
-                    
                     if d_option == "🖊️ 自行輸入":
                         d_stock = st.text_input("請輸入代號", placeholder="例如：2412", key="div_stock_input").strip()
                     else:
                         d_stock = d_option.split(" ")[0]
-                    
                     d_season = st.selectbox("配息季度", ["Q1", "Q2", "Q3", "Q4"])
-
                 with col2:
                     d_held = st.number_input("除息股數 (持有股數)", min_value=0, step=100)
                     d_price = st.number_input("配息單價 (元/股)", min_value=0.0, step=0.01, format="%.2f")
                     d_total = st.number_input("實領金額 (入帳金額)", min_value=0, step=100)
-
                 if st.form_submit_button("💰 記錄股利"):
                     try:
                         post_data = {
-                            "action": "dividend",
-                            "date": d_date.strftime("%Y-%m-%d"),
-                            "stock": d_stock,
-                            "season": d_season,
-                            "held_shares": d_held,
-                            "div_price": d_price,
-                            "total": d_total
+                            "action": "dividend", "date": d_date.strftime("%Y-%m-%d"),
+                            "stock": d_stock, "season": d_season, "held_shares": d_held,
+                            "div_price": d_price, "total": d_total
                         }
-                        
                         requests.post(GAS_URL, json=post_data)
-                        
                         st.toast(f"✅ 已記錄：{d_stock} ({d_season}) 領息 ${d_total:,}", icon='💰')
                         st.session_state['admin_expanded'] = True
                         st.cache_data.clear()
-
                     except Exception as e:
                         st.error(f"錯誤：{e}")
-
-
