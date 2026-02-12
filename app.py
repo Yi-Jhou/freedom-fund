@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 # ==========================================
 # 0. 登入系統 (門神)
 # ==========================================
-st.set_page_config(page_title="雞與虎的投資看板", page_icon="📈", layout="wide")
+st.set_page_config(page_title="🐔與🐯的投資看板", page_icon="📈", layout="wide")
 
 def check_password():
     """回傳 True 代表密碼正確，False 代表尚未登入或錯誤"""
@@ -93,9 +93,9 @@ with col_title:
     st.title("💰 存股儀表板")
 
 with col_btn:
-    # 加一點空白讓按鈕往下對齊標題
-    st.write("") 
-    if st.button('🔄 更新', help="點擊強制更新資料"):
+    # 這裡加個空白，讓按鈕在垂直方向對齊標題文字
+    st.markdown('<div style="margin-top: 20px;"></div>', unsafe_allow_html=True)
+    if st.button('🔄 更新', help="強制重新讀取 Google Sheet"):
         st.cache_data.clear()
         st.rerun()
         
@@ -565,4 +565,5 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
 
                     except Exception as e:
                         st.error(f"錯誤：{e}")
+
 
