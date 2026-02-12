@@ -270,6 +270,11 @@ if df_dash is not None and not df_dash.empty:
                                 my_trans = my_trans[my_trans["投入金額"].apply(clean_number) > 0]
                             
                             if not my_trans.empty:
+                                # ★ 關鍵修正：確保數值欄位是數字，避免 format 'f' 報錯 ★
+                                for col_num in ["成交單價", "投入金額", "成交股數"]:
+                                    if col_num in my_trans.columns:
+                                        my_trans[col_num] = my_trans[col_num].apply(clean_number)
+                        
                                 cols_to_show = ["日期", "交易類別", "成交單價", "投入金額", "成交股數", "股息再投入"]
                                 final_cols = [c for c in cols_to_show if c in my_trans.columns]
                                 
@@ -538,3 +543,4 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                         st.cache_data.clear()
                     except Exception as e:
                         st.error(f"錯誤：{e}")
+
