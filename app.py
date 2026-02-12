@@ -15,8 +15,8 @@ def check_password():
 
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.markdown("## 🔒 歡迎踏入\n## 雞虎大殿堂 🐔🐯")
-        password_input = st.text_input("請輸入神秘數字", type="password")
+        st.markdown("## 歡迎踏入\n## 🐔🐯大殿堂 ")
+        password_input = st.text_input("🔒 請輸入神秘數字", type="password")
 
         if password_input:
             try:
@@ -160,7 +160,7 @@ if df_dash is not None and not df_dash.empty:
         # ==========================================
         # C. ⚡ 最新動態流水帳 (近 30 天)
         # ==========================================
-        st.subheader("⚡ 最新動態 (近 30 天)")
+        st.subheader("⚡最新動態")
 
         df_act = load_data(ACT_URL)
 
@@ -445,7 +445,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
 
         # === Tab 4: 管理股票 ===
         with tab4:
-            st.info("💡 這裡設定的名稱，會自動套用到整個網站 (持股清單、交易明細)。")
+            st.info("💡 設定的名稱，會自動套用到整個網站 (持股清單、交易明細)。")
             
             with st.form("stock_map_form"):
                 col1, col2 = st.columns(2)
@@ -496,3 +496,4 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
             if st.button("🔄 重新讀取清單"):
                 st.cache_data.clear()
                 st.rerun()
+
