@@ -443,9 +443,174 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     except Exception as e:
                         st.error(f"錯誤：{e}")
 
+        # ==========================================
+# 4. 管理員專區
+# ==========================================
+st.markdown("---") 
+st.markdown("### ⚙️ 後台管理")
+
+if 'admin_expanded' not in st.session_state:
+    st.session_state['admin_expanded'] = False
+
+with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['admin_expanded']):
+    
+    if not st.session_state.get('admin_logged_in', False):
+        st.warning("⚠️ 此區域僅限管理員操作")
+        admin_input = st.text_input("🔑 請輸入管理員密碼", type="password", key="admin_pass_input")
+        
+        if admin_input:
+            try:
+                if admin_input == st.secrets["admin_password"]:
+                    st.session_state['admin_logged_in'] = True
+                    st.session_state['admin_expanded'] = True 
+                    st.success("身分驗證成功！")
+                    st.rerun() 
+                else:
+                    st.error("密碼錯誤，請勿嘗試入侵 🚔")
+            except KeyError:
+                st.error("Secrets 未設定 admin_password")
+    else:
+        st.success("🔓 管理員模式已啟用")
+        if st.button("🔒 登出管理員"):
+            st.session_state['admin_logged_in'] = False
+            st.session_state['admin_expanded'] = False
+            st.rerun()
+
+        # ★ 修改：變成 5 個分頁 ★
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["📢 發布公告", "💸 資金入帳", "📝 新增交易", "🏷️ 管理股票", "💰 新增股利"])
+
+        # === Tab 1: 發公告 ===
+        with tab1:
+            with st.form("msg_form"):
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    new_type = st.selectbox("類型", ["🎉 慶祝", "🔔 提醒", "📢 一般", "🚨 緊急"])
+                with col2:
+                    new_content = st.text_input("公告內容", placeholder="例如：資產突破 50 萬啦！")
+                
+                if st.form_submit_button("送出公告"):
+                    if new_content:
+                        try:
+                            post_data = {
+                                "action": "msg",
+                                "date": datetime.now().strftime("%Y-%m-%d"),
+                                "type": new_type,
+                                "content": new_content
+                            }
+                            requests.post(GAS_URL, json=post_data)
+                            st.toast("✅ 公告已發布！", icon='🎉')
+                            st.session_state['admin_expanded'] = True
+                            st.cache_data.clear()
+                        except Exception as e:
+                            st.error(f"錯誤：{e}")
+
+        # === Tab 2: 資金入帳 ===
+        with tab2:
+            with st.form("fund_form"):
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    f_date = st.date_input("入帳日期", datetime.now()) 
+                with col2:
+                    f_name = st.selectbox("誰轉錢進來？", ["建蒼", "奕州"]) 
+                with col3:
+                    f_amount = st.number_input("金額", min_value=0, step=1000, value=10000)
+                
+                f_note = st.text_input("備註", placeholder="例如：加碼金")
+
+                if st.form_submit_button("💰 確認入帳"):
+                    try:
+                        post_data = {
+                            "action": "fund", 
+                            "date": f_date.strftime("%Y-%m-%d"), 
+                            "name": f_name,
+                            "amount": f_amount,
+                            "note": f_note
+                        }
+                        response = requests.post(GAS_URL, json=post_data)
+                        if response.status_code == 200:
+                            result = response.json()
+                            if result.get("status") == "success":
+                                st.toast(f"✅ 成功！已將款項填入 {f_date.month} 月的格子中。", icon='💸')
+                                st.session_state['admin_expanded'] = True
+                            else:
+                                st.error(f"❌ 寫入失敗：{result.get('message')}")
+                        else:
+                            st.error("❌ 連線錯誤")
+                    except Exception as e:
+                        st.error(f"錯誤：{e}")
+
+        # === Tab 3: 新增交易 ===
+        with tab3:
+            with st.form("trade_form"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    t_date = st.date_input("交易日期", datetime.now())
+                    
+                    if stock_map_dict:
+                        fav_options = [f"{k} ({v})" for k, v in stock_map_dict.items()]
+                        fav_options.sort()
+                    else:
+                        fav_options = ["0050", "006208", "00919", "2330"] 
+
+                    selected_option = st.selectbox("股票代號", fav_options + ["🖊️ 自行輸入"])
+                    
+                    if selected_option == "🖊️ 自行輸入":
+                        t_stock_input = st.text_input("請輸入代號", placeholder="例如：2412").strip()
+                        t_stock = t_stock_input 
+                    else:
+                        t_stock = selected_option.split(" ")[0]
+                    
+                    t_type = st.selectbox("交易類別", ["買入", "賣出"])
+                    
+                    sub_c1, sub_c2 = st.columns(2)
+                    with sub_c1:
+                        is_regular = st.checkbox("是定期定額嗎？", value=True)
+                    with sub_c2:
+                        is_dividend = st.checkbox("是股息再投入嗎？", value=False)
+                    
+                with col2:
+                    t_price = st.number_input("成交單價", min_value=0.0, step=0.1, format="%.2f")
+                    t_shares = st.number_input("成交股數", min_value=0, step=100)
+                    t_fee = st.number_input("手續費 (僅紀錄)", min_value=0, value=20)
+                
+                if st.form_submit_button("📝 記錄交易"):
+                    try:
+                        t_total_final = int(t_price * t_shares)
+                        
+                        post_data = {
+                            "action": "trade",
+                            "date": t_date.strftime("%Y-%m-%d"),
+                            "stock": t_stock,
+                            "type": t_type,
+                            "price": t_price,
+                            "total": t_total_final, 
+                            "shares": t_shares,
+                            "fee": t_fee,          
+                            "regular": "Y" if is_regular else "",
+                            "dividend": "Y" if is_dividend else "" 
+                        }
+                        
+                        requests.post(GAS_URL, json=post_data)
+                        
+                        prefix_msg = ""
+                        if is_regular: prefix_msg += "(定期定額) "
+                        if is_dividend: prefix_msg += "(股息再投入) "
+                        
+                        if t_type == "買入" and prefix_msg:
+                            msg = f"{prefix_msg}買入 {t_stock} {t_shares}股 @ {t_price} ，總共 {t_total_final} 元"
+                            st.toast(f"✅ {msg}", icon='♻️' if is_dividend else '📝')
+                        else:
+                            st.toast(f"✅ 已記錄：{t_type} {t_stock} {t_shares} 股 (總額 ${t_total_final:,})", icon='📝')
+                        
+                        st.session_state['admin_expanded'] = True
+                        st.cache_data.clear()
+
+                    except Exception as e:
+                        st.error(f"錯誤：{e}")
+
         # === Tab 4: 管理股票 ===
         with tab4:
-            st.info("💡 設定的名稱，會自動套用到整個網站 (持股清單、交易明細)。")
+            st.info("💡 這裡設定的名稱，會自動套用到整個網站 (持股清單、交易明細)。")
             
             with st.form("stock_map_form"):
                 col1, col2 = st.columns(2)
@@ -463,12 +628,10 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                                 "name": m_name
                             }
                             requests.post(GAS_URL, json=post_data)
-                            
                             st.toast(f"✅ 已更新：{m_code} ➝ {m_name}", icon='🏷️')
                             st.cache_data.clear()
                             st.session_state['admin_expanded'] = True
                             st.rerun()
-                            
                         except Exception as e:
                             st.error(f"錯誤：{e}")
                     else:
@@ -476,20 +639,10 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
 
             st.divider()
             st.subheader("📋 目前已設定的股票")
-            
             if stock_map_dict:
                 df_map = pd.DataFrame(list(stock_map_dict.items()), columns=['股票代號', '股票名稱'])
                 df_map = df_map.sort_values(by='股票代號')
-                
-                st.dataframe(
-                    df_map, 
-                    use_container_width=True, 
-                    hide_index=True,
-                    column_config={
-                        "股票代號": st.column_config.TextColumn("代號", width="small"),
-                        "股票名稱": st.column_config.TextColumn("顯示名稱", width="medium"),
-                    }
-                )
+                st.dataframe(df_map, use_container_width=True, hide_index=True, column_config={"股票代號": st.column_config.TextColumn("代號", width="small"), "股票名稱": st.column_config.TextColumn("顯示名稱", width="medium")})
             else:
                 st.info("尚無資料，請在上方新增股票。")
             
@@ -497,3 +650,54 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                 st.cache_data.clear()
                 st.rerun()
 
+        # === Tab 5: 新增股利 (★ 這是新加的 ★) ===
+        with tab5:
+            st.caption("請依照券商的「股利發放通知書」填寫")
+            with st.form("dividend_form"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    d_date = st.date_input("發放日期", datetime.now())
+                    
+                    # 股票代號選單
+                    if stock_map_dict:
+                        fav_options = [f"{k} ({v})" for k, v in stock_map_dict.items()]
+                        fav_options.sort()
+                    else:
+                        fav_options = ["0050", "006208", "00919", "2330"] 
+
+                    d_option = st.selectbox("股票代號", fav_options + ["🖊️ 自行輸入"], key="div_stock")
+                    
+                    if d_option == "🖊️ 自行輸入":
+                        d_stock = st.text_input("請輸入代號", placeholder="例如：2412", key="div_stock_input").strip()
+                    else:
+                        d_stock = d_option.split(" ")[0]
+                    
+                    # 季度 (例如 2024Q4)
+                    current_year = datetime.now().year
+                    d_season = st.text_input("配息季度", value=f"{current_year}Q1", placeholder="例如：2025Q1")
+
+                with col2:
+                    d_held = st.number_input("除息股數 (持有股數)", min_value=0, step=100)
+                    d_price = st.number_input("配息單價 (元/股)", min_value=0.0, step=0.01, format="%.2f")
+                    d_total = st.number_input("實領金額 (入帳金額)", min_value=0, step=100)
+
+                if st.form_submit_button("💰 記錄股利"):
+                    try:
+                        post_data = {
+                            "action": "dividend",
+                            "date": d_date.strftime("%Y-%m-%d"),
+                            "stock": d_stock,
+                            "season": d_season,
+                            "held_shares": d_held,
+                            "div_price": d_price,
+                            "total": d_total
+                        }
+                        
+                        requests.post(GAS_URL, json=post_data)
+                        
+                        st.toast(f"✅ 已記錄：{d_stock} ({d_season}) 領息 ${d_total:,}", icon='💰')
+                        st.session_state['admin_expanded'] = True
+                        st.cache_data.clear()
+
+                    except Exception as e:
+                        st.error(f"錯誤：{e}")
