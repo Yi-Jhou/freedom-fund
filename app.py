@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 # ==========================================
 # 0. 登入系統 (門神)
 # ==========================================
-st.set_page_config(page_title="🐔與🐯的投資看板", page_icon="📈", layout="wide")
+st.set_page_config(page_title="雞與虎的投資看板", page_icon="📈", layout="wide")
 
 def check_password():
     """回傳 True 代表密碼正確，False 代表尚未登入或錯誤"""
@@ -15,7 +15,7 @@ def check_password():
 
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.markdown("## 🔒 歡迎踏入\n## 🐔🐯大殿堂 ")
+        st.markdown("## 🔒 歡迎踏入\n## 雞虎大殿堂 🐔🐯")
         password_input = st.text_input("請輸入神秘數字", type="password")
 
         if password_input:
@@ -173,7 +173,7 @@ if df_dash is not None and not df_dash.empty:
         # ==========================================
         # C. ⚡ 最新動態 (近 30 天)
         # ==========================================
-        st.subheader("⚡最新動態")
+        st.subheader("⚡ 最新動態 (近 30 天)")
 
         df_act = load_data(ACT_URL)
 
