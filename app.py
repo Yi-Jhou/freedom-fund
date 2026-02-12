@@ -43,7 +43,6 @@ try:
     MSG_URL = st.secrets["msg_sheet_url"]
     ACT_URL = st.secrets["act_sheet_url"]
     GAS_URL = st.secrets["gas_url"]
-    # ★ 新增：股票清單 CSV 連結
     STOCK_MAP_URL = st.secrets["stock_map_url"] 
 except (FileNotFoundError, KeyError) as e:
     st.error(f"🔒 錯誤：找不到 Secrets 設定！請檢查 Streamlit Cloud 後台。\n缺少項目: {e}")
@@ -65,9 +64,7 @@ def load_stock_map():
     """讀取 Google Sheet 的股票清單，轉成字典 {'0050': '元大台灣50'}"""
     try:
         df = pd.read_csv(STOCK_MAP_URL, dtype=str)
-        # 確保有這兩欄，並轉成字典
         if '股票代號' in df.columns and '股票名稱' in df.columns:
-            # 去除空白
             df['股票代號'] = df['股票代號'].str.strip()
             df['股票名稱'] = df['股票名稱'].str.strip()
             return dict(zip(df['股票代號'], df['股票名稱']))
@@ -173,16 +170,12 @@ if df_dash is not None and not df_dash.empty:
                 if '日期' in df_act.columns and '內容' in df_act.columns:
                     df_act['日期'] = pd.to_datetime(df_act['日期'], errors='coerce')
                     
-                    # 1. 設定時間過濾：只留近 30 天
                     cutoff_date = datetime.now() - timedelta(days=30)
                     df_recent = df_act[df_act['日期'] >= cutoff_date]
-                    
-                    # 2. 倒序排列 (最新的在最上面)
                     df_recent = df_recent.sort_values(by='日期', ascending=False).reset_index(drop=True)
                     
                     if not df_recent.empty:
                         for index, row in df_recent.iterrows():
-                            # Emoji 邏輯
                             icon = "🔹" 
                             row_type = str(row['類型']) if '類型' in df_act.columns else ""
                             content = str(row['內容'])
@@ -192,13 +185,10 @@ if df_dash is not None and not df_dash.empty:
                             elif "交易" in row_type:
                                 icon = "⚖️"
                             
-                            # --- 視覺優化：如果是定期定額，讓它變顯眼！ ---
                             if "(定期定額)" in content:
                                 content = content.replace("(定期定額)", "🔴 **(定期定額)**")
                             
-                            # 3. 日期格式加上年份
                             date_str = row['日期'].strftime('%Y/%m/%d') if pd.notna(row['日期']) else ""
-                            
                             st.markdown(f"{icon} **{date_str}** | {content}")
                     else:
                         st.caption("近一個月無動態")
@@ -215,19 +205,19 @@ if df_dash is not None and not df_dash.empty:
         # ==========================================
         st.subheader("📋 持股清單")
         
-        # 1. 準備資料
         display_df = df_stocks[["股票代號", "目前市值", "帳面損益", "總投入本金", "目前股價", "累積總股數"]].copy()
 
-        # 2. ★ 翻譯代號：用 map 來轉換代號為名稱 ★
-        #    如果找不到對照，就維持原本的代號 (fillna)
+        # 1. 產生名稱對照
         display_df["顯示名稱"] = display_df["股票代號"].map(stock_map_dict).fillna("")
         
-        # 3. 把代號跟名稱組起來： "0050" + " (" + "元大台灣50" + ")"
-        #    如果沒有名稱，就只顯示代號
+        # 2. 合併代號與名稱
         display_df["股票代號"] = display_df.apply(
             lambda x: f"{x['股票代號']} ({x['顯示名稱']})" if x['顯示名稱'] else x['股票代號'], 
             axis=1
         )
+
+        # 3. ★ 刪除 "顯示名稱" 輔助欄位，避免在表格中重複顯示 ★
+        display_df = display_df.drop(columns=["顯示名稱"])
 
         def style_row_by_profit(row):
             profit = row['帳面損益']
@@ -261,10 +251,7 @@ if df_dash is not None and not df_dash.empty:
         # --- 詳細交易紀錄 (整合翻譯還原) ---
         if len(event.selection.rows) > 0:
             selected_index = event.selection.rows[0]
-            # 這裡抓到的會是 "0050 (元大台灣50)"
             selected_display_name = display_df.iloc[selected_index]["股票代號"]
-            
-            # ★ 切割字串，還原成 "0050" 去查表 ★
             selected_stock_code = selected_display_name.split(" ")[0]
             
             with st.container(border=True):
@@ -275,14 +262,12 @@ if df_dash is not None and not df_dash.empty:
                     if "股票代號" in df_trans.columns:
                         df_trans["股票代號"] = clean_stock_code(df_trans["股票代號"])
                         
-                        # 用純代號過濾資料
                         my_trans = df_trans[df_trans["股票代號"] == selected_stock_code].copy()
                         
                         if "投入金額" in my_trans.columns:
                              my_trans = my_trans[my_trans["投入金額"].apply(clean_number) > 0]
                         
                         if not my_trans.empty:
-                            # 這裡選擇不翻譯明細裡的代號，保持簡潔，因為標題已經有了
                             cols_to_show = ["日期", "交易類別", "成交單價", "投入金額", "成交股數"]
                             final_cols = [c for c in cols_to_show if c in my_trans.columns]
                             st.dataframe(my_trans[final_cols], use_container_width=True, hide_index=True)
@@ -292,8 +277,7 @@ if df_dash is not None and not df_dash.empty:
                         st.error("交易表格式錯誤。")
                 else:
                     st.error("無法讀取交易表。")
-        else:
-            st.caption("👆 (手機請左滑) 點擊框框可查看明細")
+        # ★ 這裡原本的 st.caption 已經移除 ★
 
         if st.button('🔄 立即更新'):
             st.cache_data.clear()
@@ -316,7 +300,6 @@ if 'admin_expanded' not in st.session_state:
 
 with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['admin_expanded']):
     
-    # --- 檢查是否已經登入管理員 ---
     if not st.session_state.get('admin_logged_in', False):
         st.warning("⚠️ 此區域僅限管理員操作")
         admin_input = st.text_input("🔑 請輸入管理員密碼", type="password", key="admin_pass_input")
@@ -339,7 +322,6 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
             st.session_state['admin_expanded'] = False
             st.rerun()
 
-        # 改成 4 個分頁
         tab1, tab2, tab3, tab4 = st.tabs(["📢 發布公告", "💸 資金入帳", "📝 新增交易", "🏷️ 管理股票"])
 
         # === Tab 1: 發公告 ===
@@ -409,14 +391,11 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                 with col1:
                     t_date = st.date_input("交易日期", datetime.now())
                     
-                    # --- 股票代號：從 stock_map_dict 產生選單 ---
                     if stock_map_dict:
-                        # 產生 "0050 (元大台灣50)" 這樣的選項
                         fav_options = [f"{k} ({v})" for k, v in stock_map_dict.items()]
-                        # 排序一下
                         fav_options.sort()
                     else:
-                        fav_options = ["0050", "006208", "00919", "2330"] # 預設備用
+                        fav_options = ["0050", "006208", "00919", "2330"] 
 
                     selected_option = st.selectbox("股票代號", fav_options + ["🖊️ 自行輸入"])
                     
@@ -424,7 +403,6 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                         t_stock_input = st.text_input("請輸入代號", placeholder="例如：2412").strip()
                         t_stock = t_stock_input 
                     else:
-                        # 切開字串，只取前面的代號 "0050"
                         t_stock = selected_option.split(" ")[0]
                     
                     t_type = st.selectbox("交易類別", ["買入", "賣出"])
@@ -465,11 +443,10 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     except Exception as e:
                         st.error(f"錯誤：{e}")
 
-        # === Tab 4: 管理股票 (新增功能) ===
+        # === Tab 4: 管理股票 ===
         with tab4:
             st.info("💡 這裡設定的名稱，會自動套用到整個網站 (持股清單、交易明細)。")
             
-            # --- 1. 新增/編輯區 ---
             with st.form("stock_map_form"):
                 col1, col2 = st.columns(2)
                 with col1:
@@ -498,12 +475,9 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                         st.warning("⚠️ 代號和名稱都要填寫才能儲存喔！")
 
             st.divider()
-
-            # --- 2. 目前清單顯示區 ---
             st.subheader("📋 目前已設定的股票")
             
             if stock_map_dict:
-                # 轉成 DataFrame 表格顯示
                 df_map = pd.DataFrame(list(stock_map_dict.items()), columns=['股票代號', '股票名稱'])
                 df_map = df_map.sort_values(by='股票代號')
                 
