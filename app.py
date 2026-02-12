@@ -15,8 +15,8 @@ def check_password():
 
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.markdown("## 🔒 歡迎踏入\n## 雞虎大殿堂 🐔🐯")
-        password_input = st.text_input("請輸入神秘數字", type="password")
+        st.markdown("## 歡迎踏入\n## 🐔🐯大殿堂 ")
+        password_input = st.text_input("🔒 請輸入神秘數字", type="password")
 
         if password_input:
             try:
@@ -87,7 +87,7 @@ def clean_number(x):
 # ==========================================
 st.title("💰 存股儀表板")
 
-# --- A. 智慧公告欄 ---
+# --- A. 智慧公告欄 (倒序顯示最新) ---
 df_msg = load_data(MSG_URL)
 
 if df_msg is not None and not df_msg.empty:
@@ -96,6 +96,7 @@ if df_msg is not None and not df_msg.empty:
         if '日期' in df_msg.columns:
             df_msg['日期'] = pd.to_datetime(df_msg['日期'], errors='coerce')
 
+        # 倒序：最新的在最上面
         df_reversed = df_msg.iloc[::-1].reset_index(drop=True)
         
         if not df_reversed.empty:
@@ -159,7 +160,7 @@ if df_dash is not None and not df_dash.empty:
         # ==========================================
         # C. ⚡ 最新動態 (近 30 天)
         # ==========================================
-        st.subheader("⚡ 最新動態 (近 30 天)")
+        st.subheader("⚡最新動態 ")
 
         df_act = load_data(ACT_URL)
 
@@ -321,8 +322,8 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
             st.session_state['admin_expanded'] = False
             st.rerun()
 
-        # 5 個分頁
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(["📢 發布公告", "💸 資金入帳", "📝 新增交易", "🏷️ 管理股票", "💰 新增股利"])
+        # ★ 修改順序：1.公告 2.管理股票 3.資金 4.交易 5.股利
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["📢 發布公告", "🏷️ 管理股票", "💸 資金入帳", "📝 新增交易", "💰 新增股利"])
 
         # === Tab 1: 發公告 ===
         with tab1:
@@ -349,8 +350,62 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                         except Exception as e:
                             st.error(f"錯誤：{e}")
 
-        # === Tab 2: 資金入帳 ===
+        # === Tab 2: 管理股票 (原 Tab 4) ===
         with tab2:
+            st.info("💡 這裡設定的名稱，會自動套用到整個網站 (持股清單、交易明細)。")
+            
+            with st.form("stock_map_form"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    m_code = st.text_input("股票代號", placeholder="例如：0050").strip()
+                with col2:
+                    m_name = st.text_input("股票名稱", placeholder="例如：元大台灣50").strip()
+                
+                if st.form_submit_button("💾 儲存 / 更新"):
+                    if m_code and m_name:
+                        try:
+                            post_data = {
+                                "action": "update_stock", 
+                                "stock": m_code,
+                                "name": m_name
+                            }
+                            requests.post(GAS_URL, json=post_data)
+                            
+                            st.toast(f"✅ 已更新：{m_code} ➝ {m_name}", icon='🏷️')
+                            st.cache_data.clear()
+                            st.session_state['admin_expanded'] = True
+                            st.rerun()
+                            
+                        except Exception as e:
+                            st.error(f"錯誤：{e}")
+                    else:
+                        st.warning("⚠️ 代號和名稱都要填寫才能儲存喔！")
+
+            st.divider()
+            st.subheader("📋 目前已設定的股票")
+            
+            if stock_map_dict:
+                df_map = pd.DataFrame(list(stock_map_dict.items()), columns=['股票代號', '股票名稱'])
+                df_map = df_map.sort_values(by='股票代號')
+                
+                st.dataframe(
+                    df_map, 
+                    use_container_width=True, 
+                    hide_index=True,
+                    column_config={
+                        "股票代號": st.column_config.TextColumn("代號", width="small"),
+                        "股票名稱": st.column_config.TextColumn("顯示名稱", width="medium"),
+                    }
+                )
+            else:
+                st.info("尚無資料，請在上方新增股票。")
+            
+            if st.button("🔄 重新讀取清單"):
+                st.cache_data.clear()
+                st.rerun()
+
+        # === Tab 3: 資金入帳 (原 Tab 2) ===
+        with tab3:
             with st.form("fund_form"):
                 col1, col2, col3 = st.columns(3)
                 with col1:
@@ -384,8 +439,8 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     except Exception as e:
                         st.error(f"錯誤：{e}")
 
-        # === Tab 3: 新增交易 (含股息再投入) ===
-        with tab3:
+        # === Tab 4: 新增交易 (原 Tab 3) ===
+        with tab4:
             with st.form("trade_form"):
                 col1, col2 = st.columns(2)
                 with col1:
@@ -453,60 +508,6 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     except Exception as e:
                         st.error(f"錯誤：{e}")
 
-        # === Tab 4: 管理股票 ===
-        with tab4:
-            st.info("💡 這裡設定的名稱，會自動套用到整個網站 (持股清單、交易明細)。")
-            
-            with st.form("stock_map_form"):
-                col1, col2 = st.columns(2)
-                with col1:
-                    m_code = st.text_input("股票代號", placeholder="例如：0050").strip()
-                with col2:
-                    m_name = st.text_input("股票名稱", placeholder="例如：元大台灣50").strip()
-                
-                if st.form_submit_button("💾 儲存 / 更新"):
-                    if m_code and m_name:
-                        try:
-                            post_data = {
-                                "action": "update_stock", 
-                                "stock": m_code,
-                                "name": m_name
-                            }
-                            requests.post(GAS_URL, json=post_data)
-                            
-                            st.toast(f"✅ 已更新：{m_code} ➝ {m_name}", icon='🏷️')
-                            st.cache_data.clear()
-                            st.session_state['admin_expanded'] = True
-                            st.rerun()
-                            
-                        except Exception as e:
-                            st.error(f"錯誤：{e}")
-                    else:
-                        st.warning("⚠️ 代號和名稱都要填寫才能儲存喔！")
-
-            st.divider()
-            st.subheader("📋 目前已設定的股票")
-            
-            if stock_map_dict:
-                df_map = pd.DataFrame(list(stock_map_dict.items()), columns=['股票代號', '股票名稱'])
-                df_map = df_map.sort_values(by='股票代號')
-                
-                st.dataframe(
-                    df_map, 
-                    use_container_width=True, 
-                    hide_index=True,
-                    column_config={
-                        "股票代號": st.column_config.TextColumn("代號", width="small"),
-                        "股票名稱": st.column_config.TextColumn("顯示名稱", width="medium"),
-                    }
-                )
-            else:
-                st.info("尚無資料，請在上方新增股票。")
-            
-            if st.button("🔄 重新讀取清單"):
-                st.cache_data.clear()
-                st.rerun()
-
         # === Tab 5: 新增股利 (使用下拉選單 Q1~Q4) ===
         with tab5:
             st.caption("請依照券商的「股利發放通知書」填寫")
@@ -528,7 +529,6 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     else:
                         d_stock = d_option.split(" ")[0]
                     
-                    # 修改為下拉選單
                     d_season = st.selectbox("配息季度", ["Q1", "Q2", "Q3", "Q4"])
 
                 with col2:
