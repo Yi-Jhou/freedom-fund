@@ -15,8 +15,8 @@ def check_password():
 
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.markdown("## 歡迎踏入\n## 🐔🐯大殿堂")
-        password_input = st.text_input("🔒 請輸入神秘數字", type="password")
+        st.markdown("## 🔒 歡迎踏入\n## 雞虎大殿堂 🐔🐯")
+        password_input = st.text_input("請輸入神秘數字", type="password")
 
         if password_input:
             try:
@@ -159,7 +159,7 @@ if df_dash is not None and not df_dash.empty:
         # ==========================================
         # C. ⚡ 最新動態 (近 30 天)
         # ==========================================
-        st.subheader("⚡最新動態")
+        st.subheader("⚡ 最新動態 (近 30 天)")
 
         df_act = load_data(ACT_URL)
 
@@ -507,7 +507,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                 st.cache_data.clear()
                 st.rerun()
 
-        # === Tab 5: 新增股利 ===
+        # === Tab 5: 新增股利 (使用下拉選單 Q1~Q4) ===
         with tab5:
             st.caption("請依照券商的「股利發放通知書」填寫")
             with st.form("dividend_form"):
@@ -528,8 +528,8 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     else:
                         d_stock = d_option.split(" ")[0]
                     
-                    current_year = datetime.now().year
-                    d_season = st.text_input("配息季度", value=f"{current_year}Q1", placeholder="例如：2025Q1")
+                    # 修改為下拉選單
+                    d_season = st.selectbox("配息季度", ["Q1", "Q2", "Q3", "Q4"])
 
                 with col2:
                     d_held = st.number_input("除息股數 (持有股數)", min_value=0, step=100)
