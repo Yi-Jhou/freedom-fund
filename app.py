@@ -44,7 +44,6 @@ try:
     ACT_URL = st.secrets["act_sheet_url"]
     GAS_URL = st.secrets["gas_url"]
     STOCK_MAP_URL = st.secrets["stock_map_url"]
-    # ★ 讀取股利表連結
     DIV_URL = st.secrets["div_sheet_url"]
 except (FileNotFoundError, KeyError) as e:
     st.error(f"🔒 錯誤：找不到 Secrets 設定！請檢查 Streamlit Cloud 後台。\n缺少項目: {e}")
@@ -88,7 +87,7 @@ def clean_number(x):
 # 3. 網頁主程式
 # ==========================================
 
-# --- 標題區塊 (按鈕貼在標題後面) ---
+# --- 標題區塊 ---
 col_title, col_btn = st.columns([5, 1], gap="small")
 
 with col_title:
@@ -140,7 +139,7 @@ if df_msg is not None and not df_msg.empty:
 # --- B. 儀表板核心數據 ---
 df_dash = load_data(DASHBOARD_URL)
 df_trans = load_data(TRANS_URL)
-df_div = load_data(DIV_URL) # ★ 這裡先載入股利表，下面才能用
+df_div = load_data(DIV_URL)
 
 if df_dash is not None and not df_dash.empty:
     try:
@@ -249,67 +248,85 @@ if df_dash is not None and not df_dash.empty:
             use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row"
         )
 
-        # --- 點擊後的詳細明細 ---
+        # --- 點擊後的詳細明細 (Tabs 分頁 + 顏色優化) ---
         if len(event.selection.rows) > 0:
             selected_index = event.selection.rows[0]
             selected_display_name = display_df.iloc[selected_index]["股票代號"]
             selected_stock_code = selected_display_name.split(" ")[0]
             
             with st.container(border=True):
-                st.info(f"👇 **{selected_display_name}** 詳細交易紀錄")
+                st.markdown(f"### 📂 {selected_display_name}")
                 
-                # 1. 交易紀錄
-                if df_trans is not None and not df_trans.empty:
-                    df_trans.columns = df_trans.columns.str.strip()
-                    if "股票代號" in df_trans.columns:
-                        df_trans["股票代號"] = clean_stock_code(df_trans["股票代號"])
-                        my_trans = df_trans[df_trans["股票代號"] == selected_stock_code].copy()
-                        if "投入金額" in my_trans.columns:
-                             my_trans = my_trans[my_trans["投入金額"].apply(clean_number) > 0]
-                        if not my_trans.empty:
-                            cols_to_show = ["日期", "交易類別", "成交單價", "投入金額", "成交股數", "股息再投入"]
-                            final_cols = [c for c in cols_to_show if c in my_trans.columns]
-                            st.dataframe(my_trans[final_cols], use_container_width=True, hide_index=True)
-                        else:
-                            st.warning(f"尚無交易紀錄。")
-                    else:
-                        st.error("交易表格式錯誤。")
-                else:
-                    st.error("無法讀取交易表。")
+                tab_trans, tab_div = st.tabs(["⚖️ 交易明細", "💸 領息紀錄"])
+                
+                # 1. 交易紀錄 Tab (含顏色標示)
+                with tab_trans:
+                    if df_trans is not None and not df_trans.empty:
+                        df_trans.columns = df_trans.columns.str.strip()
+                        if "股票代號" in df_trans.columns:
+                            df_trans["股票代號"] = clean_stock_code(df_trans["股票代號"])
+                            my_trans = df_trans[df_trans["股票代號"] == selected_stock_code].copy()
+                            if "投入金額" in my_trans.columns:
+                                my_trans = my_trans[my_trans["投入金額"].apply(clean_number) > 0]
+                            
+                            if not my_trans.empty:
+                                cols_to_show = ["日期", "交易類別", "成交單價", "投入金額", "成交股數", "股息再投入"]
+                                final_cols = [c for c in cols_to_show if c in my_trans.columns]
+                                
+                                # ★ 定義顏色函式：買入紅、賣出綠 ★
+                                def highlight_type(val):
+                                    if val == '買入': return 'color: #ff2b2b; font-weight: bold' # 紅
+                                    if val == '賣出': return 'color: #09ab3b; font-weight: bold' # 綠
+                                    return ''
 
-                # 2. ★ 新增：個股股利紀錄 ★
-                if df_div is not None and not df_div.empty:
-                    # 使用 copy 清理，不影響原始資料
-                    df_div_local = df_div.copy()
-                    df_div_local.columns = df_div_local.columns.str.strip()
-                    if "股票代號" in df_div_local.columns:
-                        df_div_local["股票代號"] = clean_stock_code(df_div_local["股票代號"])
-                        
-                        # 篩選出這支股票的股利
-                        my_div = df_div_local[df_div_local["股票代號"] == selected_stock_code].copy()
-                        
-                        if not my_div.empty:
-                            st.markdown("---") # 分隔線
-                            st.markdown(f"#### 💸 {selected_display_name} 歷史配息")
-                            st.info("💡 股利金額參考用，金額可能已投入股票或其他用途。")
+                                st.dataframe(
+                                    my_trans[final_cols].style
+                                    .map(highlight_type, subset=['交易類別'])
+                                    .format({
+                                        "成交單價": "{:.2f}", 
+                                        "投入金額": "{:,.0f}", 
+                                        "成交股數": "{:,.0f}"
+                                    }), 
+                                    use_container_width=True, 
+                                    hide_index=True
+                                )
+                            else:
+                                st.warning(f"尚無交易紀錄。")
+                        else:
+                            st.error("交易表格式錯誤。")
+                    else:
+                        st.error("無法讀取交易表。")
+
+                # 2. 股利紀錄 Tab
+                with tab_div:
+                    if df_div is not None and not df_div.empty:
+                        df_div_local = df_div.copy()
+                        df_div_local.columns = df_div_local.columns.str.strip()
+                        if "股票代號" in df_div_local.columns:
+                            df_div_local["股票代號"] = clean_stock_code(df_div_local["股票代號"])
+                            my_div = df_div_local[df_div_local["股票代號"] == selected_stock_code].copy()
                             
-                            # 選擇顯示欄位
-                            cols_div = ["發放日期", "季", "配息單價", "實領金額"]
-                            final_div_cols = [c for c in cols_div if c in my_div.columns]
-                            
-                            # 依日期排序 (新的在上面)
-                            if "發放日期" in my_div.columns:
-                                my_div = my_div.sort_values(by="發放日期", ascending=False)
-                            
-                            st.dataframe(
-                                my_div[final_div_cols],
-                                use_container_width=True,
-                                hide_index=True,
-                                column_config={
-                                    "配息單價": st.column_config.NumberColumn("配息單價", format="$%.2f"),
-                                    "實領金額": st.column_config.NumberColumn("實領金額", format="$%d")
-                                }
-                            )
+                            if not my_div.empty:
+                                cols_div = ["發放日期", "季", "配息單價", "實領金額"]
+                                final_div_cols = [c for c in cols_div if c in my_div.columns]
+                                if "發放日期" in my_div.columns:
+                                    my_div = my_div.sort_values(by="發放日期", ascending=False)
+                                
+                                st.dataframe(
+                                    my_div[final_div_cols],
+                                    use_container_width=True,
+                                    hide_index=True,
+                                    column_config={
+                                        "配息單價": st.column_config.NumberColumn("配息單價", format="$%.2f"),
+                                        "實領金額": st.column_config.NumberColumn("實領金額", format="$%d")
+                                    }
+                                )
+                                st.caption("💡 備註：股利金額為帳面數值，資金可能已再投入或挪作他用。")
+                            else:
+                                st.info("尚無領息紀錄")
+                    else:
+                        st.info("尚無股利資料表")
+
 
     except Exception as e:
         st.error(f"程式錯誤：{e}")
