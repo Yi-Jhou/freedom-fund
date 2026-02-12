@@ -85,8 +85,20 @@ def clean_number(x):
 # ==========================================
 # 3. 網頁主程式
 # ==========================================
-st.title("💰 存股儀表板")
+# st.title("💰 存股儀表板")  <-- 這一行刪掉，換成下面這樣：
 
+col_title, col_btn = st.columns([5, 1], gap="small") # 比例 5:1
+
+with col_title:
+    st.title("💰 存股儀表板")
+
+with col_btn:
+    # 加一點空白讓按鈕往下對齊標題
+    st.write("") 
+    if st.button('🔄 更新', help="點擊強制更新資料"):
+        st.cache_data.clear()
+        st.rerun()
+        
 # --- A. 智慧公告欄 (倒序顯示最新) ---
 df_msg = load_data(MSG_URL)
 
@@ -279,9 +291,6 @@ if df_dash is not None and not df_dash.empty:
                 else:
                     st.error("無法讀取交易表。")
 
-        if st.button('🔄 立即更新'):
-            st.cache_data.clear()
-            st.rerun()
 
     except Exception as e:
         st.error(f"程式錯誤：{e}")
@@ -556,3 +565,4 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
 
                     except Exception as e:
                         st.error(f"錯誤：{e}")
+
