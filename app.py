@@ -6,14 +6,14 @@ from datetime import datetime, timedelta
 # ==========================================
 # 0. 登入系統 (門神)
 # ==========================================
-st.set_page_config(page_title="雞與虎的投資看板", page_icon="📈", layout="wide")
+st.set_page_config(page_title="🐔&🐯的投資看板", page_icon="📈", layout="wide")
 
 def check_password():
     if st.session_state.get('password_correct', False):
         return True
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.markdown("## 🔒 歡迎踏入\n## 雞虎大殿堂 🐔🐯")
+        st.markdown("## 🔒 歡迎踏入\n## 🐔🐯大殿堂 ")
         password_input = st.text_input("請輸入神秘數字", type="password")
         if password_input:
             try:
@@ -146,7 +146,7 @@ if df_dash is not None and not df_dash.empty:
         st.divider()
 
         # --- C. 最新動態 ---
-        st.subheader("⚡ 最新動態 (近 30 天)")
+        st.subheader("⚡最新動態")
         df_act = load_data(ACT_URL)
         if df_act is not None and not df_act.empty:
             try:
@@ -405,3 +405,4 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     st.warning("⚠️ 股利記錄表中缺少「狀態」欄位，請確認 Excel 的 G 欄標題有寫上「狀態」！")
             else:
                 st.warning("無法讀取股利表")
+
