@@ -218,7 +218,6 @@ if df_dash is not None and not df_dash.empty:
                             df_div["股票代號"] = clean_stock_code(df_div["股票代號"])
                             my_div = df_div[df_div["股票代號"] == sel_code].copy()
                             if not my_div.empty:
-                                # ★ 統計總領息 ★
                                 for col in ["配息單價", "實領金額"]:
                                     if col in my_div.columns: my_div[col] = my_div[col].apply(clean_number)
                                 total_div = my_div["實領金額"].sum()
@@ -234,10 +233,11 @@ if df_dash is not None and not df_dash.empty:
                                     if v == '領出': return 'background-color: #ffcccc; color: black;'
                                     return ''
 
-                                st.dataframe(
-                                    my_div[final].style.map(style_status, subset=['狀態']).format({"配息單價": "{:.2f}", "實領金額": "{:,.0f}"}),
-                                    use_container_width=True, hide_index=True
-                                )
+                                # 確保狀態欄位存在才上色，避免報錯
+                                if "狀態" in final:
+                                    st.dataframe(my_div[final].style.map(style_status, subset=['狀態']).format({"配息單價": "{:.2f}", "實領金額": "{:,.0f}"}), use_container_width=True, hide_index=True)
+                                else:
+                                    st.dataframe(my_div[final].style.format({"配息單價": "{:.2f}", "實領金額": "{:,.0f}"}), use_container_width=True, hide_index=True)
                             else: st.info("尚無領息紀錄")
                     else: st.info("尚無股利資料表")
 
@@ -265,7 +265,6 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
         st.success("🔓 管理員模式已啟用")
         if st.button("🔒 登出"): st.session_state['admin_logged_in'] = False; st.session_state['admin_expanded'] = False; st.rerun()
 
-        # ★ 新增 Tab 6: 管理股利
         t1, t2, t3, t4, t5, t6 = st.tabs(["📢 公告", "🏷️ 股票", "💸 資金", "📝 交易", "💰 新增股利", "🏦 管理股利"])
 
         with t1: # 公告
@@ -334,41 +333,51 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     requests.post(GAS_URL, json={"action": "dividend", "date": dd.strftime("%Y-%m-%d"), "stock": ds, "season": dsea, "held_shares": dh, "div_price": dp, "total": dt})
                     st.toast("✅ 股利已記錄"); st.cache_data.clear()
 
-        with t6: # ★ 管理股利 (新功能)
+        with t6: # 管理股利
             st.info("這裡列出所有「未使用」的股利，你可以選擇將其領出或再投入。")
             if df_div is not None and not df_div.empty:
-                # 篩選未使用的股利
-                df_unused = df_div[df_div["狀態"] == "未使用"].copy()
-                
-                if not df_unused.empty:
-                    # 製作選單顯示名稱： 2026-03-15 | 0050 | $5000
-                    df_unused["標籤"] = df_unused.apply(lambda x: f"{x['發放日期']} | {x['股票代號']} | ${clean_number(x['實領金額']):,.0f} ({x['季']})", axis=1)
+                df_div_local = df_div.copy()
+                df_div_local.columns = df_div_local.columns.str.strip()
+                if "狀態" in df_div_local.columns:
+                    # 避免空白被漏掉
+                    df_div_local["狀態"] = df_div_local["狀態"].fillna("未使用")
+                    df_unused = df_div_local[df_div_local["狀態"] == "未使用"].copy()
                     
-                    target_div = st.selectbox("選擇一筆股利", df_unused["標籤"])
-                    
-                    # 找出選到的那一行原始資料
-                    selected_row = df_unused[df_unused["標籤"] == target_div].iloc[0]
-                    
-                    st.write(f"目前選定：**{selected_row['股票代號']}** 金額 **${clean_number(selected_row['實領金額']):,.0f}**")
-                    
-                    new_status = st.radio("變更狀態為：", ["領出 (匯出至銀行)", "再投入股票"], horizontal=True)
-                    
-                    if st.button("確認變更狀態"):
-                        try:
-                            # 呼叫 GAS 更新
-                            requests.post(GAS_URL, json={
-                                "action": "update_div_status",
-                                "date": selected_row['發放日期'], # 傳送原始日期字串
-                                "stock": selected_row['股票代號'],
-                                "season": selected_row['季'],
-                                "new_status": new_status
-                            })
-                            st.toast(f"✅ 更新成功！已變更為：{new_status}")
-                            st.cache_data.clear()
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"連線錯誤：{e}")
+                    if not df_unused.empty:
+                        df_unused["股票代號"] = clean_stock_code(df_unused["股票代號"])
+                        df_unused["標籤"] = df_unused.apply(lambda x: f"{x['發放日期']} | {x['股票代號']} | ${clean_number(x['實領金額']):,.0f} ({x['季']})", axis=1)
+                        
+                        target_div = st.selectbox("選擇一筆股利", df_unused["標籤"])
+                        selected_row = df_unused[df_unused["標籤"] == target_div].iloc[0]
+                        
+                        st.write(f"目前選定：**{selected_row['股票代號']}** 金額 **${clean_number(selected_row['實領金額']):,.0f}**")
+                        new_status = st.radio("變更狀態為：", ["領出", "再投入股票"], horizontal=True)
+                        
+                        if st.button("確認變更狀態"):
+                            try:
+                                res = requests.post(GAS_URL, json={
+                                    "action": "update_div_status",
+                                    "date": str(selected_row['發放日期']).strip(),
+                                    "stock": str(selected_row['股票代號']).strip(),
+                                    "season": str(selected_row['季']).strip(),
+                                    "new_status": new_status
+                                })
+                                if res.status_code == 200:
+                                    res_data = res.json()
+                                    if res_data.get("status") == "success":
+                                        st.toast(f"✅ 更新成功！已變更為：{new_status}")
+                                        st.cache_data.clear()
+                                        st.rerun()
+                                    else:
+                                        # 顯示 GAS 傳回的錯誤
+                                        st.error(f"❌ Excel 更新失敗：{res_data.get('message')}")
+                                else:
+                                    st.error("❌ 連線錯誤")
+                            except Exception as e:
+                                st.error(f"連線錯誤：{e}")
+                    else:
+                        st.success("🎉 目前沒有閒置的股利！")
                 else:
-                    st.success("🎉 目前沒有閒置的股利！")
+                    st.warning("⚠️ 股利記錄表中缺少「狀態」欄位，請確認 Excel 的 G 欄標題有寫上「狀態」！")
             else:
                 st.warning("無法讀取股利表")
