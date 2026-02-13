@@ -23,7 +23,7 @@ def check_password():
                     st.rerun()
                 else:
                     st.error("❌密碼錯誤，請贈與🐔一杯五十嵐。 ")
-            except KeyError: # ★ 修復 2：精準捕捉錯誤，不再攔截 rerun
+            except KeyError:
                 st.error("系統錯誤：未設定密碼 (請檢查 Secrets)")
                 return False
     return False
@@ -206,11 +206,17 @@ if df_dash is not None and not df_dash.empty:
                                 for col in ["成交單價", "投入金額", "成交股數"]:
                                     if col in my_trans.columns: my_trans[col] = my_trans[col].apply(clean_number)
                                 
-                                # ★ 修復 1：交易紀錄一律依照日期遞增 (舊到新) 排列
                                 if "日期" in my_trans.columns:
                                     my_trans = my_trans.sort_values(by="日期", ascending=True)
 
-                                cols = ["日期", "交易類別", "成交單價", "投入金額", "成交股數", "股息再投入"]
+                                # ★ 修改：將舊資料的 Y 或 空白，統一轉換成 ✅ 或 ❎ 顯示
+                                if "定期定額" in my_trans.columns:
+                                    my_trans["定期定額"] = my_trans["定期定額"].apply(lambda x: "✅" if str(x).strip() in ["Y", "✅"] else "❎")
+                                if "股息再投入" in my_trans.columns:
+                                    my_trans["股息再投入"] = my_trans["股息再投入"].apply(lambda x: "✅" if str(x).strip() in ["Y", "✅"] else "❎")
+
+                                # ★ 修改：欄位順序 (定期定額 在前，股息再投入 在後)
+                                cols = ["日期", "交易類別", "成交單價", "投入金額", "成交股數", "定期定額", "股息再投入"]
                                 final = [c for c in cols if c in my_trans.columns]
                                 
                                 def highlight(v): return 'color: #ff2b2b; font-weight: bold' if v=='買入' else 'color: #09ab3b; font-weight: bold' if v=='賣出' else ''
@@ -232,7 +238,6 @@ if df_dash is not None and not df_dash.empty:
                                 cols = ["發放日期", "季", "配息單價", "實領金額", "狀態"]
                                 final = [c for c in cols if c in my_div.columns]
                                 
-                                # ★ 修復 1：股利紀錄一律依照日期遞增 (舊到新) 排列
                                 if "發放日期" in my_div.columns: 
                                     my_div = my_div.sort_values(by="發放日期", ascending=True)
                                 
@@ -268,7 +273,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                 if admin_input == st.secrets["admin_password"]:
                     st.session_state['admin_logged_in'] = True; st.session_state['admin_expanded'] = True; st.success("身分驗證成功！"); st.rerun()
                 else: st.error("密碼錯誤 🚔")
-            except KeyError: # ★ 修復 2：精準捕捉錯誤，不再攔截 rerun
+            except KeyError:
                 st.error("Secrets 未設定 admin_password")
     else:
         st.success("🔓 管理員模式已啟用")
@@ -323,8 +328,22 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                 tf = c2.number_input("手續費", value=20)
                 if st.form_submit_button("記錄"):
                     tot = int(tp * tsh)
-                    requests.post(GAS_URL, json={"action": "trade", "date": td.strftime("%Y-%m-%d"), "stock": ts, "type": tt, "price": tp, "total": tot, "shares": tsh, "fee": tf, "regular": "Y" if ir else "", "dividend": "Y" if id else ""})
-                    st.toast("✅ 交易已記錄"); st.cache_data.clear()
+                    # ★ 修改：發送 ✅ 或 ❎ 給 GAS
+                    mark_reg = "✅" if ir else "❎"
+                    mark_div = "✅" if id else "❎"
+                    
+                    requests.post(GAS_URL, json={"action": "trade", "date": td.strftime("%Y-%m-%d"), "stock": ts, "type": tt, "price": tp, "total": tot, "shares": tsh, "fee": tf, "regular": mark_reg, "dividend": mark_div})
+                    
+                    prefix_msg = ""
+                    if ir: prefix_msg += "(定期定額) "
+                    if id: prefix_msg += "(股息再投入) "
+                    if tt == "買入" and prefix_msg:
+                        msg = f"{prefix_msg}買入 {ts} {tsh}股 @ {tp} ，總共 {tot} 元"
+                        st.toast(f"✅ {msg}", icon='♻️' if id else '📝')
+                    else:
+                        st.toast(f"✅ 已記錄：{tt} {ts} {tsh} 股 (總額 ${tot:,})", icon='📝')
+                    st.session_state['admin_expanded'] = True
+                    st.cache_data.clear()
 
         with t5:
             st.caption("輸入收到股利通知單的資訊，預設狀態為「未使用」")
