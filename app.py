@@ -23,7 +23,7 @@ def check_password():
                     st.rerun()
                 else:
                     st.error("❌密碼錯誤，請贈與🐔一杯五十嵐。 ")
-            except KeyError:
+            except KeyError: # ★ 修復 2：精準捕捉錯誤，不再攔截 rerun
                 st.error("系統錯誤：未設定密碼 (請檢查 Secrets)")
                 return False
     return False
@@ -205,6 +205,11 @@ if df_dash is not None and not df_dash.empty:
                             if not my_trans.empty:
                                 for col in ["成交單價", "投入金額", "成交股數"]:
                                     if col in my_trans.columns: my_trans[col] = my_trans[col].apply(clean_number)
+                                
+                                # ★ 修復 1：交易紀錄一律依照日期遞增 (舊到新) 排列
+                                if "日期" in my_trans.columns:
+                                    my_trans = my_trans.sort_values(by="日期", ascending=True)
+
                                 cols = ["日期", "交易類別", "成交單價", "投入金額", "成交股數", "股息再投入"]
                                 final = [c for c in cols if c in my_trans.columns]
                                 
@@ -226,7 +231,10 @@ if df_dash is not None and not df_dash.empty:
 
                                 cols = ["發放日期", "季", "配息單價", "實領金額", "狀態"]
                                 final = [c for c in cols if c in my_div.columns]
-                                if "發放日期" in my_div.columns: my_div = my_div.sort_values(by="發放日期", ascending=False)
+                                
+                                # ★ 修復 1：股利紀錄一律依照日期遞增 (舊到新) 排列
+                                if "發放日期" in my_div.columns: 
+                                    my_div = my_div.sort_values(by="發放日期", ascending=True)
                                 
                                 def style_status(v):
                                     if v == '未使用': return 'background-color: #ffeebb; color: black;'
@@ -260,7 +268,8 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                 if admin_input == st.secrets["admin_password"]:
                     st.session_state['admin_logged_in'] = True; st.session_state['admin_expanded'] = True; st.success("身分驗證成功！"); st.rerun()
                 else: st.error("密碼錯誤 🚔")
-            except: st.error("Secrets 未設定 admin_password")
+            except KeyError: # ★ 修復 2：精準捕捉錯誤，不再攔截 rerun
+                st.error("Secrets 未設定 admin_password")
     else:
         st.success("🔓 管理員模式已啟用")
         if st.button("🔒 登出"): st.session_state['admin_logged_in'] = False; st.session_state['admin_expanded'] = False; st.rerun()
@@ -333,30 +342,23 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     requests.post(GAS_URL, json={"action": "dividend", "date": dd.strftime("%Y-%m-%d"), "stock": ds, "season": dsea, "held_shares": dh, "div_price": dp, "total": dt})
                     st.toast("✅ 股利已記錄"); st.cache_data.clear()
 
-        with t6: # ★ 強化版 管理股利 (強制統一日期格式)
+        with t6:
             st.info("這裡列出所有「未使用」的股利，你可以選擇將其領出或再投入。")
             if df_div is not None and not df_div.empty:
                 df_div_local = df_div.copy()
                 df_div_local.columns = df_div_local.columns.str.strip()
-                
-                # ★ 強制統一日期格式 (解決 / 和 - 混用的問題) ★
                 if "發放日期" in df_div_local.columns:
                     df_div_local["發放日期"] = pd.to_datetime(df_div_local["發放日期"], errors='coerce').dt.strftime('%Y-%m-%d')
-                
                 if "狀態" in df_div_local.columns:
                     df_div_local["狀態"] = df_div_local["狀態"].fillna("未使用")
                     df_unused = df_div_local[df_div_local["狀態"] == "未使用"].copy()
-                    
                     if not df_unused.empty:
                         df_unused["股票代號"] = clean_stock_code(df_unused["股票代號"])
                         df_unused["標籤"] = df_unused.apply(lambda x: f"{x['發放日期']} | {x['股票代號']} | ${clean_number(x['實領金額']):,.0f} ({x['季']})", axis=1)
-                        
                         target_div = st.selectbox("選擇一筆股利", df_unused["標籤"])
                         selected_row = df_unused[df_unused["標籤"] == target_div].iloc[0]
-                        
                         st.write(f"目前選定：**{selected_row['股票代號']}** 金額 **${clean_number(selected_row['實領金額']):,.0f}**")
                         new_status = st.radio("變更狀態為：", ["領出", "再投入股票"], horizontal=True)
-                        
                         if st.button("確認變更狀態"):
                             try:
                                 res = requests.post(GAS_URL, json={
@@ -385,4 +387,3 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     st.warning("⚠️ 股利記錄表中缺少「狀態」欄位，請確認 Excel 的 G 欄標題有寫上「狀態」！")
             else:
                 st.warning("無法讀取股利表")
-
