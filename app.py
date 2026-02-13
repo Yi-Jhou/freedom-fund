@@ -200,6 +200,7 @@ if df_dash is not None and not df_dash.empty:
                             df_trans["股票代號"] = clean_stock_code(df_trans["股票代號"])
                             my_trans = df_trans[df_trans["股票代號"] == sel_code].copy()
                             if "投入金額" in my_trans.columns:
+                                my_trans = my_trans[my_trans["投入金額"].astype(str).str.strip() != ""]
                                 my_trans = my_trans[my_trans["投入金額"].apply(clean_number) > 0]
                             if not my_trans.empty:
                                 for col in ["成交單價", "投入金額", "成交股數"]:
@@ -233,7 +234,6 @@ if df_dash is not None and not df_dash.empty:
                                     if v == '領出': return 'background-color: #ffcccc; color: black;'
                                     return ''
 
-                                # 確保狀態欄位存在才上色，避免報錯
                                 if "狀態" in final:
                                     st.dataframe(my_div[final].style.map(style_status, subset=['狀態']).format({"配息單價": "{:.2f}", "實領金額": "{:,.0f}"}), use_container_width=True, hide_index=True)
                                 else:
@@ -267,7 +267,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
 
         t1, t2, t3, t4, t5, t6 = st.tabs(["📢 公告", "🏷️ 股票", "💸 資金", "📝 交易", "💰 新增股利", "🏦 管理股利"])
 
-        with t1: # 公告
+        with t1:
             with st.form("msg_form"):
                 c1, c2 = st.columns([1, 3])
                 nt = c1.selectbox("類型", ["🎉 慶祝", "🔔 提醒", "📢 一般", "🚨 緊急"])
@@ -276,7 +276,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     requests.post(GAS_URL, json={"action": "msg", "date": datetime.now().strftime("%Y-%m-%d"), "type": nt, "content": nc})
                     st.toast("✅ 公告已發布！"); st.cache_data.clear()
 
-        with t2: # 股票
+        with t2:
             with st.form("stock_form"):
                 c1, c2 = st.columns(2)
                 mc = c1.text_input("代號", placeholder="0050").strip()
@@ -288,7 +288,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                 df_map = pd.DataFrame(list(stock_map_dict.items()), columns=['代號', '名稱']).sort_values('代號')
                 st.dataframe(df_map, use_container_width=True, hide_index=True)
 
-        with t3: # 資金
+        with t3:
             with st.form("fund_form"):
                 c1, c2, c3 = st.columns(3)
                 fd = c1.date_input("日期", datetime.now())
@@ -299,7 +299,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     requests.post(GAS_URL, json={"action": "fund", "date": fd.strftime("%Y-%m-%d"), "name": fn, "amount": fa, "note": fnt})
                     st.toast("✅ 入帳成功"); st.cache_data.clear()
 
-        with t4: # 交易
+        with t4:
             with st.form("trade_form"):
                 c1, c2 = st.columns(2)
                 td = c1.date_input("日期", datetime.now())
@@ -317,7 +317,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     requests.post(GAS_URL, json={"action": "trade", "date": td.strftime("%Y-%m-%d"), "stock": ts, "type": tt, "price": tp, "total": tot, "shares": tsh, "fee": tf, "regular": "Y" if ir else "", "dividend": "Y" if id else ""})
                     st.toast("✅ 交易已記錄"); st.cache_data.clear()
 
-        with t5: # 新增股利
+        with t5:
             st.caption("輸入收到股利通知單的資訊，預設狀態為「未使用」")
             with st.form("div_form"):
                 c1, c2 = st.columns(2)
@@ -333,13 +333,12 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     requests.post(GAS_URL, json={"action": "dividend", "date": dd.strftime("%Y-%m-%d"), "stock": ds, "season": dsea, "held_shares": dh, "div_price": dp, "total": dt})
                     st.toast("✅ 股利已記錄"); st.cache_data.clear()
 
-        with t6: # 管理股利
+        with t6: # ★ 強化版 管理股利 (加入實領金額一併傳送給後端比對)
             st.info("這裡列出所有「未使用」的股利，你可以選擇將其領出或再投入。")
             if df_div is not None and not df_div.empty:
                 df_div_local = df_div.copy()
                 df_div_local.columns = df_div_local.columns.str.strip()
                 if "狀態" in df_div_local.columns:
-                    # 避免空白被漏掉
                     df_div_local["狀態"] = df_div_local["狀態"].fillna("未使用")
                     df_unused = df_div_local[df_div_local["狀態"] == "未使用"].copy()
                     
@@ -360,6 +359,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                                     "date": str(selected_row['發放日期']).strip(),
                                     "stock": str(selected_row['股票代號']).strip(),
                                     "season": str(selected_row['季']).strip(),
+                                    "amount": float(clean_number(selected_row['實領金額'])), # ★ 把金額送過去作保險比對
                                     "new_status": new_status
                                 })
                                 if res.status_code == 200:
@@ -369,7 +369,6 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                                         st.cache_data.clear()
                                         st.rerun()
                                     else:
-                                        # 顯示 GAS 傳回的錯誤
                                         st.error(f"❌ Excel 更新失敗：{res_data.get('message')}")
                                 else:
                                     st.error("❌ 連線錯誤")
