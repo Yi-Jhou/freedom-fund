@@ -333,11 +333,16 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     requests.post(GAS_URL, json={"action": "dividend", "date": dd.strftime("%Y-%m-%d"), "stock": ds, "season": dsea, "held_shares": dh, "div_price": dp, "total": dt})
                     st.toast("✅ 股利已記錄"); st.cache_data.clear()
 
-        with t6: # ★ 強化版 管理股利 (加入實領金額一併傳送給後端比對)
+        with t6: # ★ 強化版 管理股利 (強制統一日期格式)
             st.info("這裡列出所有「未使用」的股利，你可以選擇將其領出或再投入。")
             if df_div is not None and not df_div.empty:
                 df_div_local = df_div.copy()
                 df_div_local.columns = df_div_local.columns.str.strip()
+                
+                # ★ 強制統一日期格式 (解決 / 和 - 混用的問題) ★
+                if "發放日期" in df_div_local.columns:
+                    df_div_local["發放日期"] = pd.to_datetime(df_div_local["發放日期"], errors='coerce').dt.strftime('%Y-%m-%d')
+                
                 if "狀態" in df_div_local.columns:
                     df_div_local["狀態"] = df_div_local["狀態"].fillna("未使用")
                     df_unused = df_div_local[df_div_local["狀態"] == "未使用"].copy()
@@ -359,7 +364,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                                     "date": str(selected_row['發放日期']).strip(),
                                     "stock": str(selected_row['股票代號']).strip(),
                                     "season": str(selected_row['季']).strip(),
-                                    "amount": float(clean_number(selected_row['實領金額'])), # ★ 把金額送過去作保險比對
+                                    "amount": float(clean_number(selected_row['實領金額'])),
                                     "new_status": new_status
                                 })
                                 if res.status_code == 200:
@@ -380,3 +385,4 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     st.warning("⚠️ 股利記錄表中缺少「狀態」欄位，請確認 Excel 的 G 欄標題有寫上「狀態」！")
             else:
                 st.warning("無法讀取股利表")
+
