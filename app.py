@@ -209,13 +209,12 @@ if df_dash is not None and not df_dash.empty:
                                 if "日期" in my_trans.columns:
                                     my_trans = my_trans.sort_values(by="日期", ascending=True)
 
-                                # ★ 修改：將舊資料的 Y 或 空白，統一轉換成 ✅ 或 ❎ 顯示
+                                # ★ 修改：將舊資料的 Y 或 ✅，統一轉換成更清晰的 ✔️ 或 ❌
                                 if "定期定額" in my_trans.columns:
-                                    my_trans["定期定額"] = my_trans["定期定額"].apply(lambda x: "✅" if str(x).strip() in ["Y", "✅"] else "❎")
+                                    my_trans["定期定額"] = my_trans["定期定額"].apply(lambda x: "✔️" if str(x).strip() in ["Y", "✅", "✔️"] else "❌")
                                 if "股息再投入" in my_trans.columns:
-                                    my_trans["股息再投入"] = my_trans["股息再投入"].apply(lambda x: "✅" if str(x).strip() in ["Y", "✅"] else "❎")
+                                    my_trans["股息再投入"] = my_trans["股息再投入"].apply(lambda x: "✔️" if str(x).strip() in ["Y", "✅", "✔️"] else "❌")
 
-                                # ★ 修改：欄位順序 (定期定額 在前，股息再投入 在後)
                                 cols = ["日期", "交易類別", "成交單價", "投入金額", "成交股數", "定期定額", "股息再投入"]
                                 final = [c for c in cols if c in my_trans.columns]
                                 
@@ -328,9 +327,9 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                 tf = c2.number_input("手續費", value=20)
                 if st.form_submit_button("記錄"):
                     tot = int(tp * tsh)
-                    # ★ 修改：發送 ✅ 或 ❎ 給 GAS
-                    mark_reg = "✅" if ir else "❎"
-                    mark_div = "✅" if id else "❎"
+                    # ★ 修改：發送 ✔️ 或 ❌ 給 GAS
+                    mark_reg = "✔️" if ir else "❌"
+                    mark_div = "✔️" if id else "❌"
                     
                     requests.post(GAS_URL, json={"action": "trade", "date": td.strftime("%Y-%m-%d"), "stock": ts, "type": tt, "price": tp, "total": tot, "shares": tsh, "fee": tf, "regular": mark_reg, "dividend": mark_div})
                     
