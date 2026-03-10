@@ -27,7 +27,7 @@ jobs:
         
     - name: 安裝 Playwright 瀏覽器核心
       run: |
-        playwright install chromium
+        python -m playwright install chromium
 
     - name: 執行喚醒腳本
       run: |
