@@ -14,7 +14,7 @@ def check_password():
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
         st.markdown("## 歡迎踏入\n## 🐔🐯大殿堂 ")
-        password_input = st.text_input("🔒請輸入神秘數字", type="password")
+        password_input = st.text_input("🔒 請輸入神秘數字", type="password")
         if password_input:
             try:
                 correct_password = st.secrets["app_password"]
@@ -119,7 +119,7 @@ if df_msg is not None and not df_msg.empty:
     except Exception as e: pass
 
 # ★ 修改 1：將發布公告移到外面，讓建蒼登入儀表板就能直接用
-with st.expander("📝 發布新公告 (建蒼與阿州專區)"):
+with st.expander("📝 發布新公告"):
     with st.form("public_msg_form"):
         c1, c2 = st.columns([1, 3])
         nt = c1.selectbox("類型", ["🎉 慶祝", "🔔 提醒", "📢 一般", "🚨 緊急"])
@@ -188,21 +188,22 @@ if df_dash is not None and not df_dash.empty:
         mask_cost = df_stocks['總投入本金'] > 0
         df_stocks.loc[mask_cost, '含息報酬率'] = ((df_stocks['目前市值'] + df_stocks['已領股息'] - df_stocks['總投入本金']) / df_stocks['總投入本金']) * 100
         
-        # --- 繪製 4 大核心數據 ---
+       # --- 繪製 4 大核心數據 ---
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("總投入本金", f"${total_cost:,.0f}")
         
-        # ★ 修改 2：加入紅綠燈判斷，並關閉 Streamlit 預設的箭頭顏色 (delta_color="off")
-        profit_color = "🔴" if total_profit > 0 else "🟢" if total_profit < 0 else "⚪"
-        col2.metric("目前總市值", f"${total_value:,.0f}", delta=f"{profit_color} 帳面損益 {total_profit:,.0f} 元", delta_color="off")
+        # ★ 修改 1：拿掉手動圓點，加上 inverse 讓系統自動判定：正數紅⬆、負數綠⬇
+        col2.metric("目前總市值", f"${total_value:,.0f}", delta=f"{total_profit:,.0f} 元 (帳面損益)", delta_color="inverse")
         
-        col3.metric("💰 累積已領股息", f"${total_div_all:,.0f}", delta=f"剩餘可用: ${remaining_div:,.0f}", delta_color="normal")
+        # 股息提示維持灰色即可，因為這只是「提示資訊」，不是「損益」
+        col3.metric("💰 累積已領股息", f"${total_div_all:,.0f}", delta=f"剩餘可用: ${remaining_div:,.0f}", delta_color="off")
         
         # 計算整體含息報酬率
         total_profit_with_div = total_profit + total_div_all
         roi_with_div = (total_profit_with_div / total_cost * 100) if total_cost > 0 else 0
-        roi_div_color = "🔴" if roi_with_div > 0 else "🟢" if roi_with_div < 0 else "⚪"
-        col4.metric("📈 含息總報酬率", f"{roi_with_div:.2f}%", delta=f"{roi_div_color} 真實獲利 {total_profit_with_div:,.0f} 元", delta_color="off")
+        
+        # ★ 修改 2：含息真實獲利也一起套用自動紅綠燈
+        col4.metric("📈 含息總報酬率", f"{roi_with_div:.2f}%", delta=f"{total_profit_with_div:,.0f} 元 (真實獲利)", delta_color="inverse")
         
         st.caption("💡 註：帳面損益僅計算股價價差；含息報酬率則將「累積已領股息」一併計入，反映真實存股績效。")
         st.divider()
@@ -465,3 +466,4 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     st.warning("⚠️ 股利記錄表中缺少「狀態」欄位，請確認 Excel 的 G 欄標題有寫上「狀態」！")
             else:
                 st.warning("無法讀取股利表")
+
