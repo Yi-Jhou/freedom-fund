@@ -118,8 +118,7 @@ if df_msg is not None and not df_msg.empty:
                         st.write(f"• **{d_str}** ({row.get('類型','-')})：{row['內容']}")
     except Exception as e: pass
 
-# ★ 修改 1：將發布公告移到外面，讓建蒼登入儀表板就能直接用
-with st.expander("📝 發布新公告"):
+with st.expander("📝 發布新公告 "):
     with st.form("public_msg_form"):
         c1, c2 = st.columns([1, 3])
         nt = c1.selectbox("類型", ["🎉 慶祝", "🔔 提醒", "📢 一般", "🚨 緊急"])
@@ -133,12 +132,28 @@ with st.expander("📝 發布新公告"):
             else:
                 st.warning("請輸入公告內容喔！")
 
-# --- B. 儀表板核心數據 (含息升級版) ---
+# --- B. 儀表板核心數據 (含息升級版 + 算法B: 真實本金) ---
 df_dash = load_data(DASHBOARD_URL)
 df_trans = load_data(TRANS_URL)
 df_div = load_data(DIV_URL)
 
-# 優先處理股利資料，供後續大看板與表格計算使用
+# 1. 優先計算「股息再投入」的總額 (演算法 B 核心)
+reinvest_dict = {}
+if df_trans is not None and not df_trans.empty:
+    df_trans_clean = df_trans.copy()
+    df_trans_clean.columns = df_trans_clean.columns.str.strip()
+    if '股票代號' in df_trans_clean.columns and '股息再投入' in df_trans_clean.columns and '投入金額' in df_trans_clean.columns:
+        df_trans_clean['股票代號'] = clean_stock_code(df_trans_clean['股票代號'])
+        df_trans_clean['投入金額'] = df_trans_clean['投入金額'].apply(clean_number)
+        
+        # 找出有打勾「✔️」或「Y」且是買入的紀錄
+        mask_reinvest = df_trans_clean['股息再投入'].astype(str).str.strip().isin(['Y', '✅', '✔️'])
+        if '交易類別' in df_trans_clean.columns:
+            mask_reinvest = mask_reinvest & (df_trans_clean['交易類別'].astype(str).str.strip() == '買入')
+        
+        reinvest_dict = df_trans_clean[mask_reinvest].groupby('股票代號')['投入金額'].sum().to_dict()
+
+# 2. 處理股利資料，供後續大看板與表格計算使用
 total_div_all = 0
 remaining_div = 0
 df_div_grouped = pd.DataFrame()
@@ -149,19 +164,15 @@ if df_div is not None and not df_div.empty:
         df_div['股票代號'] = clean_stock_code(df_div['股票代號'])
         df_div['實領金額'] = df_div['實領金額'].apply(clean_number)
         
-        # 1. 計算總累積股息
         total_div_all = df_div['實領金額'].sum()
-        
-        # 2. 計算剩餘可用股息
         if '狀態' in df_div.columns:
             df_div['狀態'] = df_div['狀態'].fillna("未使用")
             remaining_div = df_div[df_div['狀態'] == '未使用']['實領金額'].sum()
             
-        # 3. 按股票代號分組，計算各檔股票「已領股息」，準備併入持股清單
         df_div_grouped = df_div.groupby('股票代號')['實領金額'].sum().reset_index()
         df_div_grouped.rename(columns={'實領金額': '已領股息'}, inplace=True)
 
-
+# 3. 統整持股清單與大數據
 if df_dash is not None and not df_dash.empty:
     try:
         df_dash = df_dash.astype(str)
@@ -170,10 +181,21 @@ if df_dash is not None and not df_dash.empty:
         for col in ["總投入本金", "目前市值", "帳面損益", "累積總股數", "平均成本", "目前股價"]:
             if col in df_stocks.columns: df_stocks[col] = df_stocks[col].apply(clean_number).fillna(0)
         df_stocks = df_stocks[df_stocks["累積總股數"] > 0].copy()
+        
+        # 補足沒有市值的防呆處理
         mask_missing = (df_stocks["目前市值"] == 0) & (df_stocks["總投入本金"] > 0)
         df_stocks.loc[mask_missing, "目前市值"] = df_stocks.loc[mask_missing, "總投入本金"]
-        df_stocks.loc[mask_missing, "帳面損益"] = 0
         
+        # ★★★ 執行「算法 B：真實口袋本金」★★★
+        # 從原本的總本金中，扣除「股息再投入」的金額
+        df_stocks['再投入金額'] = df_stocks['股票代號'].map(reinvest_dict).fillna(0)
+        df_stocks['總投入本金'] = df_stocks['總投入本金'] - df_stocks['再投入金額']
+        df_stocks['總投入本金'] = df_stocks['總投入本金'].apply(lambda x: max(x, 0)) # 確保不會變負數
+        
+        # 因為本金改變了，帳面損益需要重新計算！
+        df_stocks['帳面損益'] = df_stocks['目前市值'] - df_stocks['總投入本金']
+        
+        # 結算整體數據
         total_cost = df_stocks["總投入本金"].sum()
         total_value = df_stocks["目前市值"].sum()
         total_profit = total_value - total_cost
@@ -188,24 +210,19 @@ if df_dash is not None and not df_dash.empty:
         mask_cost = df_stocks['總投入本金'] > 0
         df_stocks.loc[mask_cost, '含息報酬率'] = ((df_stocks['目前市值'] + df_stocks['已領股息'] - df_stocks['總投入本金']) / df_stocks['總投入本金']) * 100
         
-       # --- 繪製 4 大核心數據 ---
+        # --- 繪製 4 大核心數據 ---
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("總投入本金", f"${total_cost:,.0f}")
+        col1.metric("真實投入本金", f"${total_cost:,.0f}")
         
-        # ★ 修改 1：拿掉手動圓點，加上 inverse 讓系統自動判定：正數紅⬆、負數綠⬇
         col2.metric("目前總市值", f"${total_value:,.0f}", delta=f"{total_profit:,.0f} 元 (帳面損益)", delta_color="inverse")
         
-        # 股息提示維持灰色即可，因為這只是「提示資訊」，不是「損益」
         col3.metric("💰 累積已領股息", f"${total_div_all:,.0f}", delta=f"剩餘可用: ${remaining_div:,.0f}", delta_color="off")
         
-        # 計算整體含息報酬率
         total_profit_with_div = total_profit + total_div_all
         roi_with_div = (total_profit_with_div / total_cost * 100) if total_cost > 0 else 0
-        
-        # ★ 修改 2：含息真實獲利也一起套用自動紅綠燈
         col4.metric("📈 含息總報酬率", f"{roi_with_div:.2f}%", delta=f"{total_profit_with_div:,.0f} 元 (真實獲利)", delta_color="inverse")
         
-        st.caption("💡 註：帳面損益僅計算股價價差；含息報酬率則將「累積已領股息」一併計入，反映真實存股績效。")
+        st.caption("💡 註：系統已自動扣除「股息再投入」之金額，真實呈現口袋實際掏出的成本與報酬。")
         st.divider()
 
         # --- C. 最新動態 ---
@@ -340,7 +357,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
         if admin_input:
             try:
                 if admin_input == st.secrets["admin_password"]:
-                    st.session_state['admin_logged_in'] = True; st.session_state['admin_expanded'] = True; st.success("身分驗體驗成功！"); st.rerun()
+                    st.session_state['admin_logged_in'] = True; st.session_state['admin_expanded'] = True; st.success("身分驗證成功！"); st.rerun()
                 else: st.error("密碼錯誤 🚔")
             except KeyError:
                 st.error("Secrets 未設定 admin_password")
@@ -348,7 +365,6 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
         st.success("🔓 管理員模式已啟用")
         if st.button("🔒 登出"): st.session_state['admin_logged_in'] = False; st.session_state['admin_expanded'] = False; st.rerun()
 
-        # ★ 修改 3：因為公告移出去了，所以這裡少一個分頁，並把名稱對應好
         t1, t2, t3, t4, t5 = st.tabs(["🏷️ 股票", "💸 資金", "📝 交易", "💰 新增股利", "🏦 管理股利"])
 
         with t1:
@@ -466,4 +482,3 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     st.warning("⚠️ 股利記錄表中缺少「狀態」欄位，請確認 Excel 的 G 欄標題有寫上「狀態」！")
             else:
                 st.warning("無法讀取股利表")
-
