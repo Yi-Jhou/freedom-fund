@@ -13,8 +13,8 @@ def check_password():
         return True
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.markdown("## 🔒 歡迎踏入\n## 🐔🐯大殿堂 ")
-        password_input = st.text_input("請輸入神秘數字", type="password")
+        st.markdown("##  歡迎踏入\n## 🐔🐯大殿堂 ")
+        password_input = st.text_input("🔒 請輸入神秘數字", type="password")
         if password_input:
             try:
                 correct_password = st.secrets["app_password"]
@@ -118,10 +118,34 @@ if df_msg is not None and not df_msg.empty:
                         st.write(f"• **{d_str}** ({row.get('類型','-')})：{row['內容']}")
     except Exception as e: pass
 
-# --- B. 儀表板核心數據 ---
+# --- B. 儀表板核心數據 (含息升級版) ---
 df_dash = load_data(DASHBOARD_URL)
 df_trans = load_data(TRANS_URL)
 df_div = load_data(DIV_URL)
+
+# 優先處理股利資料，供後續大看板與表格計算使用
+total_div_all = 0
+remaining_div = 0
+df_div_grouped = pd.DataFrame()
+
+if df_div is not None and not df_div.empty:
+    df_div.columns = df_div.columns.str.strip()
+    if '股票代號' in df_div.columns and '實領金額' in df_div.columns:
+        df_div['股票代號'] = clean_stock_code(df_div['股票代號'])
+        df_div['實領金額'] = df_div['實領金額'].apply(clean_number)
+        
+        # 1. 計算總累積股息
+        total_div_all = df_div['實領金額'].sum()
+        
+        # 2. 計算剩餘可用股息
+        if '狀態' in df_div.columns:
+            df_div['狀態'] = df_div['狀態'].fillna("未使用")
+            remaining_div = df_div[df_div['狀態'] == '未使用']['實領金額'].sum()
+            
+        # 3. 按股票代號分組，計算各檔股票「已領股息」，準備併入持股清單
+        df_div_grouped = df_div.groupby('股票代號')['實領金額'].sum().reset_index()
+        df_div_grouped.rename(columns={'實領金額': '已領股息'}, inplace=True)
+
 
 if df_dash is not None and not df_dash.empty:
     try:
@@ -134,15 +158,35 @@ if df_dash is not None and not df_dash.empty:
         mask_missing = (df_stocks["目前市值"] == 0) & (df_stocks["總投入本金"] > 0)
         df_stocks.loc[mask_missing, "目前市值"] = df_stocks.loc[mask_missing, "總投入本金"]
         df_stocks.loc[mask_missing, "帳面損益"] = 0
+        
         total_cost = df_stocks["總投入本金"].sum()
         total_value = df_stocks["目前市值"].sum()
         total_profit = total_value - total_cost
-        roi = (total_profit / total_cost * 100) if total_cost > 0 else 0
-        col1, col2, col3 = st.columns(3)
-        col1.metric("目前總市值", f"${total_value:,.0f}", delta=f"{total_profit:,.0f} 元")
-        col2.metric("總投入本金", f"${total_cost:,.0f}")
-        roi_color = "🔴" if roi > 0 else "🟢" if roi < 0 else "⚪"
-        col3.metric("總報酬率", f"{roi:.2f}%", delta=roi_color)
+        
+        # 將股利數據併入持股清單
+        if not df_div_grouped.empty:
+            df_stocks = pd.merge(df_stocks, df_div_grouped, on='股票代號', how='left')
+        df_stocks['已領股息'] = df_stocks.get('已領股息', pd.Series(0, index=df_stocks.index)).fillna(0)
+
+        # 計算單檔股票「含息報酬率」
+        df_stocks['含息報酬率'] = 0.0
+        mask_cost = df_stocks['總投入本金'] > 0
+        df_stocks.loc[mask_cost, '含息報酬率'] = ((df_stocks['目前市值'] + df_stocks['已領股息'] - df_stocks['總投入本金']) / df_stocks['總投入本金']) * 100
+        
+        # --- 繪製 4 大核心數據 ---
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("總投入本金", f"${total_cost:,.0f}")
+        col2.metric("目前總市值", f"${total_value:,.0f}", delta=f"帳面損益 {total_profit:,.0f} 元")
+        
+        col3.metric("💰 累積已領股息", f"${total_div_all:,.0f}", delta=f"剩餘可用: ${remaining_div:,.0f}", delta_color="normal")
+        
+        # 計算整體含息報酬率
+        total_profit_with_div = total_profit + total_div_all
+        roi_with_div = (total_profit_with_div / total_cost * 100) if total_cost > 0 else 0
+        roi_div_color = "🔴" if roi_with_div > 0 else "🟢" if roi_with_div < 0 else "⚪"
+        col4.metric("📈 含息總報酬率", f"{roi_with_div:.2f}%", delta=f"{roi_div_color} 真實獲利 {total_profit_with_div:,.0f} 元")
+        
+        st.caption("💡 註：帳面損益僅計算股價價差；含息報酬率則將「累積已領股息」一併計入，反映真實存股績效。")
         st.divider()
 
         # --- C. 最新動態 ---
@@ -170,17 +214,25 @@ if df_dash is not None and not df_dash.empty:
 
         # --- D. 持股清單 ---
         st.subheader("📋 持股清單")
-        display_df = df_stocks[["股票代號", "目前市值", "帳面損益", "總投入本金", "目前股價", "累積總股數"]].copy()
+        display_df = df_stocks[["股票代號", "目前市值", "帳面損益", "已領股息", "含息報酬率", "總投入本金", "目前股價", "累積總股數"]].copy()
         display_df["顯示名稱"] = display_df["股票代號"].map(stock_map_dict).fillna("")
         display_df["股票代號"] = display_df.apply(lambda x: f"{x['股票代號']} ({x['顯示名稱']})" if x['顯示名稱'] else x['股票代號'], axis=1)
         display_df = display_df.drop(columns=["顯示名稱"])
         
         def style_row(row):
-            color = '#ff2b2b' if row['帳面損益'] > 0 else '#09ab3b' if row['帳面損益'] < 0 else 'black'
-            return [f'color: {color}; font-weight: bold' if col in ['目前市值', '帳面損益'] else '' for col in row.index]
+            color = '#ff2b2b' if row['含息報酬率'] > 0 else '#09ab3b' if row['含息報酬率'] < 0 else 'black'
+            return [f'color: {color}; font-weight: bold' if col in ['帳面損益', '含息報酬率'] else '' for col in row.index]
 
         event = st.dataframe(
-            display_df.style.format({"總投入本金": "{:,.0f}", "目前市值": "{:,.0f}", "帳面損益": "{:,.0f}", "平均成本": "{:.2f}", "目前股價": "{:.2f}", "累積總股數": "{:,.0f}"}).apply(style_row, axis=1).bar(subset=['帳面損益'], align='mid', color=['#90EE90', '#FFB6C1']),
+            display_df.style.format({
+                "總投入本金": "{:,.0f}", 
+                "目前市值": "{:,.0f}", 
+                "帳面損益": "{:,.0f}",
+                "已領股息": "{:,.0f}",
+                "含息報酬率": "{:.2f}%",
+                "目前股價": "{:.2f}", 
+                "累積總股數": "{:,.0f}"
+            }).apply(style_row, axis=1).bar(subset=['含息報酬率'], align='mid', color=['#90EE90', '#FFB6C1']),
             use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row"
         )
 
@@ -209,7 +261,6 @@ if df_dash is not None and not df_dash.empty:
                                 if "日期" in my_trans.columns:
                                     my_trans = my_trans.sort_values(by="日期", ascending=True)
 
-                                # ★ 修改：將舊資料的 Y 或 ✅，統一轉換成更清晰的 ✔️ 或 ❌
                                 if "定期定額" in my_trans.columns:
                                     my_trans["定期定額"] = my_trans["定期定額"].apply(lambda x: "✔️" if str(x).strip() in ["Y", "✅", "✔️"] else "❌")
                                 if "股息再投入" in my_trans.columns:
@@ -232,7 +283,7 @@ if df_dash is not None and not df_dash.empty:
                                 for col in ["配息單價", "實領金額"]:
                                     if col in my_div.columns: my_div[col] = my_div[col].apply(clean_number)
                                 total_div = my_div["實領金額"].sum()
-                                st.metric("💰 累積領息總額", f"${total_div:,.0f}")
+                                st.metric("💰 此檔股票累積領息", f"${total_div:,.0f}")
 
                                 cols = ["發放日期", "季", "配息單價", "實領金額", "狀態"]
                                 final = [c for c in cols if c in my_div.columns]
@@ -327,7 +378,6 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                 tf = c2.number_input("手續費", value=20)
                 if st.form_submit_button("記錄"):
                     tot = int(tp * tsh)
-                    # ★ 修改：發送 ✔️ 或 ❌ 給 GAS
                     mark_reg = "✔️" if ir else "❌"
                     mark_div = "✔️" if id else "❌"
                     
@@ -405,4 +455,3 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     st.warning("⚠️ 股利記錄表中缺少「狀態」欄位，請確認 Excel 的 G 欄標題有寫上「狀態」！")
             else:
                 st.warning("無法讀取股利表")
-
