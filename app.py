@@ -13,8 +13,8 @@ def check_password():
         return True
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.markdown("##  歡迎踏入\n## 🐔🐯大殿堂 ")
-        password_input = st.text_input("🔒 請輸入神秘數字", type="password")
+        st.markdown("## 歡迎踏入\n## 🐔🐯大殿堂 ")
+        password_input = st.text_input("🔒請輸入神秘數字", type="password")
         if password_input:
             try:
                 correct_password = st.secrets["app_password"]
@@ -118,6 +118,21 @@ if df_msg is not None and not df_msg.empty:
                         st.write(f"• **{d_str}** ({row.get('類型','-')})：{row['內容']}")
     except Exception as e: pass
 
+# ★ 修改 1：將發布公告移到外面，讓建蒼登入儀表板就能直接用
+with st.expander("📝 發布新公告 (建蒼與阿州專區)"):
+    with st.form("public_msg_form"):
+        c1, c2 = st.columns([1, 3])
+        nt = c1.selectbox("類型", ["🎉 慶祝", "🔔 提醒", "📢 一般", "🚨 緊急"])
+        nc = c2.text_input("內容", placeholder="想在看板上說些什麼呢？")
+        if st.form_submit_button("送出公告"):
+            if nc.strip():
+                requests.post(GAS_URL, json={"action": "msg", "date": datetime.now().strftime("%Y-%m-%d"), "type": nt, "content": nc})
+                st.toast("✅ 公告已發布！")
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.warning("請輸入公告內容喔！")
+
 # --- B. 儀表板核心數據 (含息升級版) ---
 df_dash = load_data(DASHBOARD_URL)
 df_trans = load_data(TRANS_URL)
@@ -176,7 +191,10 @@ if df_dash is not None and not df_dash.empty:
         # --- 繪製 4 大核心數據 ---
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("總投入本金", f"${total_cost:,.0f}")
-        col2.metric("目前總市值", f"${total_value:,.0f}", delta=f"帳面損益 {total_profit:,.0f} 元")
+        
+        # ★ 修改 2：加入紅綠燈判斷，並關閉 Streamlit 預設的箭頭顏色 (delta_color="off")
+        profit_color = "🔴" if total_profit > 0 else "🟢" if total_profit < 0 else "⚪"
+        col2.metric("目前總市值", f"${total_value:,.0f}", delta=f"{profit_color} 帳面損益 {total_profit:,.0f} 元", delta_color="off")
         
         col3.metric("💰 累積已領股息", f"${total_div_all:,.0f}", delta=f"剩餘可用: ${remaining_div:,.0f}", delta_color="normal")
         
@@ -184,7 +202,7 @@ if df_dash is not None and not df_dash.empty:
         total_profit_with_div = total_profit + total_div_all
         roi_with_div = (total_profit_with_div / total_cost * 100) if total_cost > 0 else 0
         roi_div_color = "🔴" if roi_with_div > 0 else "🟢" if roi_with_div < 0 else "⚪"
-        col4.metric("📈 含息總報酬率", f"{roi_with_div:.2f}%", delta=f"{roi_div_color} 真實獲利 {total_profit_with_div:,.0f} 元")
+        col4.metric("📈 含息總報酬率", f"{roi_with_div:.2f}%", delta=f"{roi_div_color} 真實獲利 {total_profit_with_div:,.0f} 元", delta_color="off")
         
         st.caption("💡 註：帳面損益僅計算股價價差；含息報酬率則將「累積已領股息」一併計入，反映真實存股績效。")
         st.divider()
@@ -321,7 +339,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
         if admin_input:
             try:
                 if admin_input == st.secrets["admin_password"]:
-                    st.session_state['admin_logged_in'] = True; st.session_state['admin_expanded'] = True; st.success("身分驗證成功！"); st.rerun()
+                    st.session_state['admin_logged_in'] = True; st.session_state['admin_expanded'] = True; st.success("身分驗體驗成功！"); st.rerun()
                 else: st.error("密碼錯誤 🚔")
             except KeyError:
                 st.error("Secrets 未設定 admin_password")
@@ -329,18 +347,10 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
         st.success("🔓 管理員模式已啟用")
         if st.button("🔒 登出"): st.session_state['admin_logged_in'] = False; st.session_state['admin_expanded'] = False; st.rerun()
 
-        t1, t2, t3, t4, t5, t6 = st.tabs(["📢 公告", "🏷️ 股票", "💸 資金", "📝 交易", "💰 新增股利", "🏦 管理股利"])
+        # ★ 修改 3：因為公告移出去了，所以這裡少一個分頁，並把名稱對應好
+        t1, t2, t3, t4, t5 = st.tabs(["🏷️ 股票", "💸 資金", "📝 交易", "💰 新增股利", "🏦 管理股利"])
 
         with t1:
-            with st.form("msg_form"):
-                c1, c2 = st.columns([1, 3])
-                nt = c1.selectbox("類型", ["🎉 慶祝", "🔔 提醒", "📢 一般", "🚨 緊急"])
-                nc = c2.text_input("內容")
-                if st.form_submit_button("送出"):
-                    requests.post(GAS_URL, json={"action": "msg", "date": datetime.now().strftime("%Y-%m-%d"), "type": nt, "content": nc})
-                    st.toast("✅ 公告已發布！"); st.cache_data.clear()
-
-        with t2:
             with st.form("stock_form"):
                 c1, c2 = st.columns(2)
                 mc = c1.text_input("代號", placeholder="0050").strip()
@@ -352,7 +362,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                 df_map = pd.DataFrame(list(stock_map_dict.items()), columns=['代號', '名稱']).sort_values('代號')
                 st.dataframe(df_map, use_container_width=True, hide_index=True)
 
-        with t3:
+        with t2:
             with st.form("fund_form"):
                 c1, c2, c3 = st.columns(3)
                 fd = c1.date_input("日期", datetime.now())
@@ -363,7 +373,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     requests.post(GAS_URL, json={"action": "fund", "date": fd.strftime("%Y-%m-%d"), "name": fn, "amount": fa, "note": fnt})
                     st.toast("✅ 入帳成功"); st.cache_data.clear()
 
-        with t4:
+        with t3:
             with st.form("trade_form"):
                 c1, c2 = st.columns(2)
                 td = c1.date_input("日期", datetime.now())
@@ -394,7 +404,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     st.session_state['admin_expanded'] = True
                     st.cache_data.clear()
 
-        with t5:
+        with t4:
             st.caption("輸入收到股利通知單的資訊，預設狀態為「未使用」")
             with st.form("div_form"):
                 c1, c2 = st.columns(2)
@@ -410,7 +420,7 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     requests.post(GAS_URL, json={"action": "dividend", "date": dd.strftime("%Y-%m-%d"), "stock": ds, "season": dsea, "held_shares": dh, "div_price": dp, "total": dt})
                     st.toast("✅ 股利已記錄"); st.cache_data.clear()
 
-        with t6:
+        with t5:
             st.info("這裡列出所有「未使用」的股利，你可以選擇將其領出或再投入。")
             if df_div is not None and not df_div.empty:
                 df_div_local = df_div.copy()
