@@ -222,7 +222,7 @@ if df_dash is not None and not df_dash.empty:
         roi_with_div = (total_profit_with_div / total_cost * 100) if total_cost > 0 else 0
         col4.metric("📈 含息總報酬率", f"{roi_with_div:.2f}%", delta=f"{total_profit_with_div:,.0f} 元 (真實獲利)", delta_color="inverse")
         
-        st.caption("💡 註：真實投入本金為：已扣除「股息再投入」之金額，真實呈現口袋實際掏出的成本與報酬。")
+        st.caption("💡 註：「真實投入本金」已扣除「股息再投入」之金額，目的在於真實呈現口袋實際掏出的成本與報酬。")
         st.divider()
 
         # --- C. 最新動態 ---
