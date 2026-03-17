@@ -421,37 +421,54 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     st.session_state['admin_expanded'] = True
                     st.cache_data.clear()
 
-        # ★ 這裡就是大改造的 t4 區塊 ★
+        # ★ t4 全新大改造 ★
         with t4:
             st.caption("💡 系統已升級「即時連動」：選好股票後，會自動帶入現有股數，並幫你算好實領金額！預設狀態為「未使用」。")
             
             c1, c2 = st.columns(2)
-            dd = c1.date_input("發放日", datetime.now(), key="div_dd")
-            opts = [f"{k} ({v})" for k, v in stock_map_dict.items()] if stock_map_dict else ["0050"]
-            sel = c1.selectbox("代號", opts + ["🖊️ 自行輸入"], key="div_s_dyn")
-            ds = c1.text_input("輸入代號", key="div_i_dyn").strip() if sel == "🖊️ 自行輸入" else sel.split(" ")[0]
-            dsea = c1.selectbox("季度", ["Q1", "Q2", "Q3", "Q4", "上半年", "下半年", "年度"], key="div_dsea")
+            dd = c1.date_input("發放日", datetime.now(), key="div_date")
             
-            # ★ 1. 自動去抓目前該檔股票的總股數
+            opts = [f"{k} ({v})" for k, v in stock_map_dict.items()] if stock_map_dict else ["0050"]
+            sel = c1.selectbox("代號", opts + ["🖊️ 自行輸入"], key="div_stock_sel")
+            ds = c1.text_input("輸入代號", key="div_stock_input").strip() if sel == "🖊️ 自行輸入" else sel.split(" ")[0]
+            
+            dsea = c1.selectbox("季度", ["Q1", "Q2", "Q3", "Q4", "上半年", "下半年", "年度"], key="div_season")
+
+            # --- 計算該股票的目前總股數 ---
             default_shares = 0
             if 'df_stocks' in locals() and not df_stocks.empty:
-                matched_stock = df_stocks[df_stocks["股票代號"] == ds]
-                if not matched_stock.empty:
-                    default_shares = int(matched_stock["累積總股數"].sum())
-            
-            dh = c2.number_input("除息股數", value=default_shares, step=100, key="div_dh")
-            dp = c2.number_input("配息單價", step=0.01, format="%.3f", key="div_dp")
-            
-            # ★ 2. 自動計算實領金額 (因為你自行吸收手續費，所以直接相乘)
+                matched = df_stocks[df_stocks["股票代號"] == ds]
+                if not matched.empty:
+                    default_shares = int(matched["累積總股數"].sum())
+
+            # --- 破解 Streamlit 卡住魔法：利用 session_state 偵測股票切換 ---
+            if "prev_ds" not in st.session_state:
+                st.session_state.prev_ds = ds
+                st.session_state.div_shares_val = default_shares
+
+            if ds != st.session_state.prev_ds:
+                st.session_state.div_shares_val = default_shares
+                st.session_state.prev_ds = ds
+
+            # 讓除息股數去綁定 session_state 裡面的值
+            dh = c2.number_input("除息股數", step=100, key="div_shares_val")
+            dp = c2.number_input("配息單價", step=0.01, format="%.3f", value=0.0)
+
+            # 自動計算實領金額 (不扣手續費)
             auto_dt = int(dh * dp)
-            dt = c2.number_input("實領金額 (已自動計算)", value=auto_dt, step=100, key="div_dt")
             
-            # 為了取代 form_submit_button，我們改用一般按鈕，並加上主色 (primary) 凸顯它
-            if st.button("💰 記錄股利", type="primary", use_container_width=True):
-                requests.post(GAS_URL, json={"action": "dividend", "date": dd.strftime("%Y-%m-%d"), "stock": ds, "season": dsea, "held_shares": dh, "div_price": dp, "total": dt})
-                st.toast("✅ 股利已記錄")
-                st.cache_data.clear()
-                st.rerun()
+            # 直接在畫面上秀出紅色的巨大金額字體！
+            st.markdown(f"#### 💰 預計實領金額： <span style='color:#ff2b2b'>**${auto_dt:,.0f}**</span>", unsafe_allow_html=True)
+            
+            # 使用獨立的按鈕取代原本的 form
+            if st.button("記錄股利", type="primary", use_container_width=True):
+                if auto_dt <= 0 and dp > 0:
+                    st.warning("請確認股數或單價是否正確！")
+                else:
+                    requests.post(GAS_URL, json={"action": "dividend", "date": dd.strftime("%Y-%m-%d"), "stock": ds, "season": dsea, "held_shares": dh, "div_price": dp, "total": auto_dt})
+                    st.toast(f"✅ 已成功寫入股利，金額 ${auto_dt:,}！")
+                    st.cache_data.clear()
+                    st.rerun()
 
         with t5:
             st.info("這裡列出所有「未使用」的股利，你可以選擇將其領出或再投入。")
