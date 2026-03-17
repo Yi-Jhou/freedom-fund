@@ -421,21 +421,37 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     st.session_state['admin_expanded'] = True
                     st.cache_data.clear()
 
+        # ★ 這裡就是大改造的 t4 區塊 ★
         with t4:
-            st.caption("輸入收到股利通知單的資訊，預設狀態為「未使用」")
-            with st.form("div_form"):
-                c1, c2 = st.columns(2)
-                dd = c1.date_input("發放日", datetime.now())
-                opts = [f"{k} ({v})" for k, v in stock_map_dict.items()] if stock_map_dict else ["0050"]
-                sel = c1.selectbox("代號", opts + ["🖊️ 自行輸入"], key="div_s")
-                ds = c1.text_input("輸入代號", key="div_i").strip() if sel == "🖊️ 自行輸入" else sel.split(" ")[0]
-                dsea = c1.selectbox("季度", ["Q1", "Q2", "Q3", "Q4", "上半年", "下半年", "年度"])
-                dh = c2.number_input("除息股數", step=100)
-                dp = c2.number_input("配息單價", step=0.01)
-                dt = c2.number_input("實領金額", step=100)
-                if st.form_submit_button("記錄股利"):
-                    requests.post(GAS_URL, json={"action": "dividend", "date": dd.strftime("%Y-%m-%d"), "stock": ds, "season": dsea, "held_shares": dh, "div_price": dp, "total": dt})
-                    st.toast("✅ 股利已記錄"); st.cache_data.clear()
+            st.caption("💡 系統已升級「即時連動」：選好股票後，會自動帶入現有股數，並幫你算好實領金額！預設狀態為「未使用」。")
+            
+            c1, c2 = st.columns(2)
+            dd = c1.date_input("發放日", datetime.now(), key="div_dd")
+            opts = [f"{k} ({v})" for k, v in stock_map_dict.items()] if stock_map_dict else ["0050"]
+            sel = c1.selectbox("代號", opts + ["🖊️ 自行輸入"], key="div_s_dyn")
+            ds = c1.text_input("輸入代號", key="div_i_dyn").strip() if sel == "🖊️ 自行輸入" else sel.split(" ")[0]
+            dsea = c1.selectbox("季度", ["Q1", "Q2", "Q3", "Q4", "上半年", "下半年", "年度"], key="div_dsea")
+            
+            # ★ 1. 自動去抓目前該檔股票的總股數
+            default_shares = 0
+            if 'df_stocks' in locals() and not df_stocks.empty:
+                matched_stock = df_stocks[df_stocks["股票代號"] == ds]
+                if not matched_stock.empty:
+                    default_shares = int(matched_stock["累積總股數"].sum())
+            
+            dh = c2.number_input("除息股數", value=default_shares, step=100, key="div_dh")
+            dp = c2.number_input("配息單價", step=0.01, format="%.3f", key="div_dp")
+            
+            # ★ 2. 自動計算實領金額 (因為你自行吸收手續費，所以直接相乘)
+            auto_dt = int(dh * dp)
+            dt = c2.number_input("實領金額 (已自動計算)", value=auto_dt, step=100, key="div_dt")
+            
+            # 為了取代 form_submit_button，我們改用一般按鈕，並加上主色 (primary) 凸顯它
+            if st.button("💰 記錄股利", type="primary", use_container_width=True):
+                requests.post(GAS_URL, json={"action": "dividend", "date": dd.strftime("%Y-%m-%d"), "stock": ds, "season": dsea, "held_shares": dh, "div_price": dp, "total": dt})
+                st.toast("✅ 股利已記錄")
+                st.cache_data.clear()
+                st.rerun()
 
         with t5:
             st.info("這裡列出所有「未使用」的股利，你可以選擇將其領出或再投入。")
