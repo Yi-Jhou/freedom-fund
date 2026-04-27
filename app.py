@@ -144,7 +144,9 @@ total_fund_in = 0
 if df_fund is not None and not df_fund.empty:
     df_fund.columns = df_fund.columns.str.strip()
     if '金額' in df_fund.columns:
-        total_fund_in = df_fund['金額'].apply(clean_number).sum()
+        # ★ 修正防呆：排除 Excel 裡的「總計」列，只加總有明確名字的紀錄
+        df_fund_clean = df_fund[df_fund['姓名'].astype(str).str.strip().isin(['建蒼', '奕州'])]
+        total_fund_in = df_fund_clean['金額'].apply(clean_number).sum()
 
 # 2. 交易計算 (真實現金流與再投入)
 reinvest_dict = {}
@@ -177,16 +179,20 @@ df_div_grouped = pd.DataFrame()
 if df_div is not None and not df_div.empty:
     df_div.columns = df_div.columns.str.strip()
     if '股票代號' in df_div.columns and '實領金額' in df_div.columns:
-        df_div['股票代號'] = clean_stock_code(df_div['股票代號'])
-        df_div['實領金額'] = df_div['實領金額'].apply(clean_number)
+        # ★ 修正防呆：預先濾掉可能存在的總計
+        df_div_clean = df_div[~df_div['股票代號'].astype(str).str.contains('計|Total', na=False)].copy()
         
-        total_div_all = df_div['實領金額'].sum()
-        if '狀態' in df_div.columns:
-            df_div['狀態'] = df_div['狀態'].fillna("未使用")
-            remaining_div = df_div[df_div['狀態'] == '未使用']['實領金額'].sum()
+        if not df_div_clean.empty:
+            df_div_clean['股票代號'] = clean_stock_code(df_div_clean['股票代號'])
+            df_div_clean['實領金額'] = df_div_clean['實領金額'].apply(clean_number)
             
-        df_div_grouped = df_div.groupby('股票代號')['實領金額'].sum().reset_index()
-        df_div_grouped.rename(columns={'實領金額': '已領股息'}, inplace=True)
+            total_div_all = df_div_clean['實領金額'].sum()
+            if '狀態' in df_div_clean.columns:
+                df_div_clean['狀態'] = df_div_clean['狀態'].fillna("未使用")
+                remaining_div = df_div_clean[df_div_clean['狀態'] == '未使用']['實領金額'].sum()
+                
+            df_div_grouped = df_div_clean.groupby('股票代號')['實領金額'].sum().reset_index()
+            df_div_grouped.rename(columns={'實領金額': '已領股息'}, inplace=True)
 
 # 4. 統整持股清單與大數據
 if df_dash is not None and not df_dash.empty:
@@ -387,7 +393,6 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
 
         t1, t2, t3, t4, t5 = st.tabs(["🏷️ 股票", "💸 資金", "📝 交易", "💰 新增股利", "🏦 管理股利"])
 
-        # ★ 完整保留 t1 股票 ★
         with t1:
             with st.form("stock_form"):
                 c1, c2 = st.columns(2)
@@ -400,7 +405,6 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                 df_map = pd.DataFrame(list(stock_map_dict.items()), columns=['代號', '名稱']).sort_values('代號')
                 st.dataframe(df_map, use_container_width=True, hide_index=True)
 
-        # ★ t2 資金 (支援負數出金) ★
         with t2:
             st.info("紀錄匯入或匯出證券交割戶的款項 (出金請輸入負數)")
             with st.form("fund_form"):
@@ -413,7 +417,6 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     requests.post(GAS_URL, json={"action": "fund", "date": fd.strftime("%Y-%m-%d"), "name": fn, "amount": fa, "note": fnt})
                     st.toast("✅ 入帳成功"); st.cache_data.clear()
 
-        # ★ t3 交易 (支援股票分割) ★
         with t3:
             st.info("💡 **【股票分割 / 配股操作指南】**\n1. 類別選「股票分割 (配股)」\n2. 單價輸入 0\n3. 股數輸入「額外多拿到」的數量")
             with st.form("trade_form"):
@@ -446,7 +449,6 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     st.session_state['admin_expanded'] = True
                     st.cache_data.clear()
 
-        # ★ t4 新增股利 (完整保留你的即時連動邏輯) ★
         with t4:
             st.caption("💡 系統已升級「即時連動」：選好股票後，會自動帶入現有股數，並幫你算好實領金額！預設狀態為「未使用」。")
             
@@ -495,7 +497,6 @@ with st.expander("🔧 點擊開啟管理面板", expanded=st.session_state['adm
                     st.cache_data.clear()
                     st.rerun()
 
-        # ★ 完整保留 t5 管理股利 ★
         with t5:
             st.info("這裡列出所有「未使用」的股利，你可以選擇將其領出或再投入。")
             if df_div is not None and not df_div.empty:
