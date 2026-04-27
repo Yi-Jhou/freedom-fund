@@ -42,7 +42,7 @@ try:
     GAS_URL = st.secrets["gas_url"]
     STOCK_MAP_URL = st.secrets["stock_map_url"]
     DIV_URL = st.secrets["div_sheet_url"]
-    FUND_URL = st.secrets["fund_sheet_url"]  # ★ 新增：資金表網址
+    FUND_URL = st.secrets["fund_sheet_url"]  
 except (FileNotFoundError, KeyError) as e:
     st.error(f"🔒 錯誤：找不到 Secrets 設定！請檢查 Streamlit Cloud 後台。\n缺少項目: {e}")
     st.stop()
@@ -83,8 +83,25 @@ def clean_number(x):
         return 0
 
 # ==========================================
-# 3. 網頁主程式
+# 3. 網頁主程式 (★ PWA 沉浸式 App 畫面改造 ★)
 # ==========================================
+hide_st_style = """
+            <style>
+            #MainMenu {visibility: hidden;} /* 隱藏右上角漢堡選單 */
+            header {visibility: hidden;}    /* 隱藏頂部預設空白列 */
+            footer {visibility: hidden;}    /* 隱藏底部浮水印 */
+            
+            /* 微調手機版畫面的邊距，讓它更緊湊、更像原生 App */
+            .block-container {
+                padding-top: 1.5rem;
+                padding-bottom: 2rem;
+                padding-left: 1rem;
+                padding-right: 1rem;
+            }
+            </style>
+            """
+st.markdown(hide_st_style, unsafe_allow_html=True)
+
 col_title, col_btn = st.columns([5, 1], gap="small")
 with col_title:
     st.title("💰 存股儀表板")
@@ -144,7 +161,6 @@ total_fund_in = 0
 if df_fund is not None and not df_fund.empty:
     df_fund.columns = df_fund.columns.str.strip()
     if '金額' in df_fund.columns:
-        # ★ 修正防呆：排除 Excel 裡的「總計」列，只加總有明確名字的紀錄
         df_fund_clean = df_fund[df_fund['姓名'].astype(str).str.strip().isin(['建蒼', '奕州'])]
         total_fund_in = df_fund_clean['金額'].apply(clean_number).sum()
 
@@ -159,15 +175,11 @@ if df_trans is not None and not df_trans.empty:
         df_trans_clean['股票代號'] = clean_stock_code(df_trans_clean['股票代號'])
         df_trans_clean['投入金額'] = df_trans_clean['投入金額'].apply(clean_number)
         
-        # 篩選條件
         mask_reinvest = df_trans_clean['股息再投入'].astype(str).str.strip().isin(['Y', '✅', '✔️'])
         is_buy = df_trans_clean['交易類別'].astype(str).str.strip() == '買入'
         is_sell = df_trans_clean['交易類別'].astype(str).str.strip() == '賣出'
         
-        # 用於算法 B 扣除本金
         reinvest_dict = df_trans_clean[mask_reinvest & is_buy].groupby('股票代號')['投入金額'].sum().to_dict()
-        
-        # 算可用餘額的現金買賣
         total_cash_out = df_trans_clean[is_buy & (~mask_reinvest)]['投入金額'].sum()
         total_cash_rev = df_trans_clean[is_sell]['投入金額'].sum()
 
@@ -179,7 +191,6 @@ df_div_grouped = pd.DataFrame()
 if df_div is not None and not df_div.empty:
     df_div.columns = df_div.columns.str.strip()
     if '股票代號' in df_div.columns and '實領金額' in df_div.columns:
-        # ★ 修正防呆：預先濾掉可能存在的總計
         df_div_clean = df_div[~df_div['股票代號'].astype(str).str.contains('計|Total', na=False)].copy()
         
         if not df_div_clean.empty:
@@ -204,44 +215,34 @@ if df_dash is not None and not df_dash.empty:
             if col in df_stocks.columns: df_stocks[col] = df_stocks[col].apply(clean_number).fillna(0)
         df_stocks = df_stocks[df_stocks["累積總股數"] > 0].copy()
         
-        # 補足沒有市值的防呆處理
         mask_missing = (df_stocks["目前市值"] == 0) & (df_stocks["總投入本金"] > 0)
         df_stocks.loc[mask_missing, "目前市值"] = df_stocks.loc[mask_missing, "總投入本金"]
         
-        # ★ 執行「算法 B：真實口袋本金」★
         df_stocks['再投入金額'] = df_stocks['股票代號'].map(reinvest_dict).fillna(0)
         df_stocks['總投入本金'] = df_stocks['總投入本金'] - df_stocks['再投入金額']
-        df_stocks['總投入本金'] = df_stocks['總投入本金'].apply(lambda x: max(x, 0)) # 確保不會變負數
+        df_stocks['總投入本金'] = df_stocks['總投入本金'].apply(lambda x: max(x, 0)) 
         
-        # 重新計算帳面損益
         df_stocks['帳面損益'] = df_stocks['目前市值'] - df_stocks['總投入本金']
         
-        # 結算整體數據
         total_cost = df_stocks["總投入本金"].sum()
         total_value = df_stocks["目前市值"].sum()
         total_profit = total_value - total_cost
         
-        # 將股利數據併入持股清單
         if not df_div_grouped.empty:
             df_stocks = pd.merge(df_stocks, df_div_grouped, on='股票代號', how='left')
         df_stocks['已領股息'] = df_stocks.get('已領股息', pd.Series(0, index=df_stocks.index)).fillna(0)
 
-        # 計算單檔股票「含息報酬率」
         df_stocks['含息報酬率'] = 0.0
         mask_cost = df_stocks['總投入本金'] > 0
         df_stocks.loc[mask_cost, '含息報酬率'] = ((df_stocks['目前市值'] + df_stocks['已領股息'] - df_stocks['總投入本金']) / df_stocks['總投入本金']) * 100
         
-        # ★ 計算可用現金餘額 ★
         available_cash = total_fund_in - total_cash_out + total_cash_rev + remaining_div
         
         # --- 繪製 5 大核心數據 ---
         col1, col2, col3, col4, col5 = st.columns(5)
         col1.metric("真實投入本金", f"${total_cost:,.0f}")
-        
         col2.metric("目前總市值", f"${total_value:,.0f}", delta=f"{total_profit:,.0f} 元 (帳面損益)", delta_color="inverse")
-        
         col3.metric("🏦 可用現金餘額", f"${available_cash:,.0f}", help="總入金 - 現金買入花費 + 賣出收入 + 閒置股息")
-        
         col4.metric("💰 累積已領股息", f"${total_div_all:,.0f}", delta=f"剩餘可用: ${remaining_div:,.0f}", delta_color="off")
         
         total_profit_with_div = total_profit + total_div_all
